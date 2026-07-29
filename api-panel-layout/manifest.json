@@ -1,0 +1,15 @@
+{
+    "display_name": "API 面板重排 (API Panel Layout)",
+    "name": "api-panel-layout",
+    "version": "1.0.0",
+    "author": "generated for TauriTavern",
+    "description": "接管 API 连接配置面板：重排字段、密钥明文切换（眼睛图标）、模型列表按需显示。不改动原生样式与底层逻辑。",
+    "loading_order": 1000,
+    "requires": [],
+    "optional": [],
+    "js": "index.js",
+    "css": "style.css",
+    "homePage": "",
+    "auto_update": false,
+    "generate_interceptor": ""
+}
