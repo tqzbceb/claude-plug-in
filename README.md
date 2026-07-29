@@ -9,22 +9,23 @@ TauriTavern / SillyTavern 扩展：接管「API 连接配置」面板。
 
 ## 安装
 
-**方式 A：目录**（推荐）
+仓库根目录**就是**扩展目录（`manifest.json` + `index.js` + `style.css`），三种装法任选：
 
-把 `api-panel-layout/` 整个目录放进扩展目录：
+**方式 A：应用内用 Git URL 安装**（不用下载文件，最省事）
+
+在「扩展」面板的安装入口填：
 
 ```
-data/default-user/extensions/api-panel-layout/
-├── manifest.json
-├── index.js
-└── style.css
+https://github.com/tqzbceb/claude-plug-in
 ```
 
-重启 / 刷新前端即可。
+**方式 B：手动放目录**
 
-**方式 B：zip**
+新建 `data/default-user/extensions/api-panel-layout/`，把 `manifest.json`、`index.js`、`style.css` 三个文件放进去，刷新前端。
 
-如果你的客户端有「从 zip 安装扩展」入口，直接选 `api-panel-layout.zip`。
+**方式 C：zip**
+
+如果客户端有「从 zip 安装扩展」入口，用仓库里的 `api-panel-layout.zip`（解压后是同名目录 + 同样三个文件）。
 
 装好后在「扩展」面板里会出现 **API 面板重排**，含 6 个开关：启用重排 / 自定义标签 / 密钥默认隐藏 / 模型列表加载后再显示 / 显示附加主体参数 / 调试日志。
 
