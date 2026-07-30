@@ -32,7 +32,9 @@
     gap: 0;
 }
 
-.ttal-panel #title_api {
+/* 只有我们自己重排时「API」才是面板第一行；原生版式上面还有「连接配置」，
+   贴顶会把两组挤在一起 */
+.ttal-managed #title_api {
     margin-top: 0;
 }
 
@@ -71,6 +73,50 @@
     background-position: right 9px center;
     background-size: 11px 7px;
     padding-right: 26px;
+}
+
+/* 面板里的文字按钮统一一档高度（原生的 Connect / Cancel、Validate JSON…）。
+   外边距不动，免得把原生排成一行的按钮挤到一起；我们自己那排另有规则覆盖。
+   放在下面那组正方形图标按钮规则之前 —— 后面的同权重规则会盖掉宽高。 */
+.ttal-panel .menu_button {
+    height: var(--ttal-btn-h);
+    min-height: var(--ttal-btn-h);
+    padding: 0 1.05em;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    line-height: 1;
+}
+
+/* 原生版式下（我们不接管的来源 / 其它 API 类型）也让图标按钮跟输入框等高、成正方形：
+   「连接配置」那排的 6 颗、以及各家密钥框旁边的小钥匙 */
+.ttal-panel:not(.ttal-managed) #view_connection_profile,
+.ttal-panel:not(.ttal-managed) #create_connection_profile,
+.ttal-panel:not(.ttal-managed) #update_connection_profile,
+.ttal-panel:not(.ttal-managed) #edit_connection_profile,
+.ttal-panel:not(.ttal-managed) #reload_connection_profile,
+.ttal-panel:not(.ttal-managed) #delete_connection_profile,
+.ttal-panel .manage-api-keys {
+    flex: 0 0 auto;
+    align-self: center;
+    width: var(--ttal-field-h);
+    min-width: var(--ttal-field-h);
+    height: var(--ttal-field-h);
+    min-height: var(--ttal-field-h);
+    padding: 0;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    line-height: 1;
+    aspect-ratio: 1 / 1;
+}
+
+/* 我们接管时这几颗按钮由 #ttal_root 那套规则管（还有一部分是隐藏的），别互相打架 */
+#ttal_root .ttal-slot-profile .flex-container > .menu_button {
+    aspect-ratio: 1 / 1;
 }
 
 /* ---- 1. 面板里所有单行输入框 / 下拉框：等高、等宽 ---- */

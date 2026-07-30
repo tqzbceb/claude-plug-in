@@ -38,10 +38,9 @@ const DEFAULT_SETTINGS = {
     keyReveal: true,         // 密钥框右边加「小眼睛」，点一下看明文
     slimProfileButtons: true,// 连接配置那排只留「新建」「删除」，「保存」挪到按钮行
     profileNameField: true,  // 加一个「预设名称」输入框，新建时自动填进命名弹窗
-    profileCustomOnly: true, // 只有四个「自定义」来源保留 API 预设，其余来源只做美化
+    customOnly: true,        // 只接管四个「自定义」来源；其余来源 / 其余 API 类型只做美化，DOM 一个字不改
     lazyModelList: true,     // 模型列表默认隐藏，加载成功后显示（只对另有「模型名」输入框的 source 生效）
     adoptExtras: true,       // 各家自己的额外字段也收进面板（Azure 部署名、Vertex 区域…）
-    slimApiList: true,       // API 下拉只留「文本补全 / 聊天补全」
     debug: false,
 };
 
@@ -276,11 +275,6 @@ function addCls(el, ...names) {
 /** 可逆隐藏 */
 function hideNode(el) {
     addCls(el, 'ttal-hidden');
-}
-
-/** 撤销 hideNode（class 的原值早记在 patched 里，teardown 照样能逐字符还原） */
-function unhideNode(el) {
-    el?.classList.remove('ttal-hidden');
 }
 
 function unpatchAll() {
@@ -598,9 +592,12 @@ function isCustomSource() {
     return currentSource() === 'custom';
 }
 
-/** 这个来源要不要「当前API预设 / 预设名称 / 保存预设」 */
-function profileEnabled() {
-    return !cfg().profileCustomOnly || isCustomSource();
+/**
+ * 这个来源要不要被本插件接管（搬移 / 隐藏 / 改标签 / 加预设）。
+ * 默认只接管四个「自定义」来源，其它一切保持 TauriTavern 原样，只做美化。
+ */
+function managed() {
+    return isChatCompletion() && (!cfg().customOnly || isCustomSource());
 }
 
 function isChatCompletion() {
@@ -640,10 +637,13 @@ function panelHost() {
  * 这里故意用 classList 而不是 patchAttr：#rm_api_block 的 class 会被客户端
  * 反复改（closedDrawer / openDrawer），记录旧值再还原会把抽屉状态弄坏。
  */
-function markPanel(on) {
+function markPanel(on, takenOver = false) {
     const panel = document.querySelector('#rm_api_block');
     if (!panel) return;
     panel.classList.toggle('ttal-panel', !!on);
+    // 接管状态单独标一个 class：有几条规则（比如「API」标签贴顶）只在我们自己
+    // 重排出来的版式下才成立，原生版式下会把间距弄没。
+    panel.classList.toggle('ttal-managed', !!on && !!takenOver);
 }
 
 /** 根节点插到「Chat Completion Source」下拉框之后 */
@@ -676,17 +676,6 @@ function layoutProfile(slot) {
         dbg('connection profile block not found — 连接管理器未加载？');
         return;
     }
-    if (!profileEnabled()) {
-        // 这家的端点是写死的，存多个 API 没意义 —— 整块「连接配置」放回原位再隐藏，
-        // 面板只保留统一尺寸与排版的美化部分。
-        slot.classList.add('ttal-hidden');
-        restoreNode(native('#update_connection_profile'));
-        restoreNode(block);
-        hideNode(block);
-        dbg('非自定义来源，隐藏 API 预设：', rawSource());
-        return;
-    }
-    unhideNode(block);
     slot.classList.remove('ttal-hidden');
     adopt(slot, block);
     if (cfg().customLabels) {
@@ -751,7 +740,7 @@ function feedNameToPopup() {
 }
 
 function layoutProfileName(slot) {
-    if (!cfg().profileNameField || !profileEnabled()) {
+    if (!cfg().profileNameField || !managed()) {
         slot.classList.add('ttal-hidden');
         return;
     }
@@ -935,7 +924,7 @@ function layoutButtons(slot) {
 
     // 「保存预设」= 原生 #update_connection_profile，从连接配置那排挪到这里，
     // 位置在「加载模型」和「附加参数」之间。逻辑还是原生的。
-    if (cfg().slimProfileButtons && profileEnabled()) {
+    if (cfg().slimProfileButtons && managed()) {
         const save = native('#update_connection_profile');
         const buttonRow = connect.parentElement;
         if (save && buttonRow) {
@@ -969,20 +958,6 @@ function layoutButtons(slot) {
 function hideTestButton() {
     if (!cfg().hideTestButton) return;
     for (const btn of document.querySelectorAll('#test_api_button, .test_api_button')) hideNode(btn);
-}
-
-/**
- * API 下拉（#main_api）里只留「文本补全 / 聊天补全」，
- * NovelAI / AI Horde / KoboldAI 隐藏起来（不删，teardown 时原样还原）。
- */
-const HIDDEN_MAIN_APIS = ['novel', 'koboldhorde', 'kobold'];
-
-function slimApiList() {
-    const select = native('#main_api');
-    if (!select || !cfg().slimApiList) return;
-    for (const option of select.options) {
-        if (HIDDEN_MAIN_APIS.includes(option.value) && option.value !== select.value) hideNode(option);
-    }
 }
 
 /* ---------------------- 模型列表：加载成功后才显示 */
@@ -1060,15 +1035,17 @@ function apply() {
         return;
     }
     if (!panelHost()) return;
-    // 主 API 不是 Chat Completion 时，客户端会把整个 #openai_api 藏起来。
-    // 「连接配置（API 预设）」原本挂在 #rm_api_block 顶部、对所有 API 都可见，
-    // 被我们搬进 #openai_api 后会跟着一起消失 —— 所以这时要完整还原，
-    // 等切回 Chat Completion 再重新装配（#main_api 的 change 已经监听了）。
-    if (!isChatCompletion()) {
-        if (ui.root && document.contains(ui.root)) {
-            dbg('主 API 不是 Chat Completion，先还原，避免连接配置被一起隐藏');
-            teardown();
-        }
+
+    // 美化（统一尺寸 / 间距 / 对齐）对所有 API 类型、所有来源都生效 —— 它只是 CSS，
+    // 一个 DOM 节点都不动。
+    markPanel(true, managed());
+
+    // 只有四个「自定义」来源才接管排版。别的来源、以及文本补全 / NovelAI /
+    // AI Horde / KoboldAI 这些 API 类型，一切保持 TauriTavern 原样：
+    // 上一轮如果接管过就完整还原（保留美化），然后什么都不做。
+    if (!managed()) {
+        if (ui.root && document.contains(ui.root)) dbg('不接管当前来源，还原成原生：', rawSource() || native('#main_api')?.value);
+        restoreNatives();
         return;
     }
 
@@ -1076,7 +1053,6 @@ function apply() {
     try {
         const root = buildRoot();
         if (!ensureMounted(root)) return;
-        markPanel(true);
 
         const fields = fieldsFor(currentSource());
         passUsed = new Set();
@@ -1091,7 +1067,6 @@ function apply() {
         layoutExtras(ui.slots.extras);
         layoutButtons(ui.slots.buttons);
         hideTestButton();
-        slimApiList();
         // 「管理 API 密钥」小钥匙：Vertex AI 的 Express 模式还有第二个密钥框，
         // 那颗小钥匙落在「其它」槽位里，所以在整块面板范围内统一清一遍。
         if (cfg().hideHints) {
@@ -1109,15 +1084,17 @@ function apply() {
     }
 }
 
-/** 完全还原：搬移归位、改写回滚、合成节点摘除 */
-function teardown() {
+/**
+ * 还原所有 DOM 改动：搬移归位、改写回滚、合成节点摘除。
+ * 不碰 .ttal-panel（那只是美化用的 class）—— 想连美化一起撤掉就调 teardown()。
+ */
+function restoreNatives() {
     applying = true;
     try {
         modelWatch?.observer?.disconnect();
         clearTimeout(modelWatch?.timer);
         modelWatch = null;
 
-        markPanel(false);
         ui.eye?.remove();
         ui.eyeInput = null;
         ui.eyeRevealed = false;
@@ -1128,12 +1105,18 @@ function teardown() {
         ui.root?.remove();
         for (const slot of Object.values(ui.slots || {})) slot.replaceChildren();
         slotCursor.clear();
-        dbg('torn down');
     } catch (error) {
-        warn('teardown failed', error);
+        warn('restore failed', error);
     } finally {
         setTimeout(() => { applying = false; }, 50);
     }
+}
+
+/** 完全卸载：DOM 还原 + 去掉美化 */
+function teardown() {
+    restoreNatives();
+    markPanel(false);
+    dbg('torn down');
 }
 
 /* ------------------------------------------- 事件绑定与观察器 */
@@ -1204,10 +1187,9 @@ const SETTING_ITEMS = [
     ['keyReveal', '密钥框加「小眼睛」查看明文', 'Add an eye button to reveal the key'],
     ['slimProfileButtons', '连接配置只留新建/删除（保存挪到按钮行）', 'Slim down connection-profile buttons'],
     ['profileNameField', '显示「预设名称」输入框', 'Show the profile name field'],
-    ['profileCustomOnly', 'API 预设只给四个「自定义」来源', 'API presets only for the four Custom sources'],
+    ['customOnly', '只接管四个「自定义」来源（其余只做美化）', 'Only take over the four Custom sources (others: styling only)'],
     ['lazyModelList', '模型列表加载后再显示', 'Reveal model list only after loading'],
     ['adoptExtras', '各家额外字段也收进面板', 'Adopt per-source extra fields'],
-    ['slimApiList', 'API 只留文本补全 / 聊天补全', 'Keep only Text / Chat Completion in the API list'],
     ['debug', '调试日志', 'Debug logging'],
 ];
 
@@ -1242,7 +1224,7 @@ function buildSettingsUI() {
             if (key === 'enabled' && !box.checked) {
                 teardown();
             } else if (key === 'customLabels' || key === 'hideHints' || key === 'hideTestButton' || key === 'keyReveal'
-                || key === 'slimProfileButtons' || key === 'profileNameField' || key === 'profileCustomOnly') {
+                || key === 'slimProfileButtons' || key === 'profileNameField' || key === 'customOnly') {
                 // 这两项改写了原生节点，先回滚再重排
                 teardown();
                 setTimeout(() => schedule(true), 80);

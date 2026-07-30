@@ -18,7 +18,7 @@ API密钥                  [••••••••••••••••] [�
 
 平时只用「当前API预设」那一行切换 API，下面那些字段是新建 / 改 API 时用的（默认全部常显，不折叠；想折叠可在设置里打开）。
 
-### 「API 预设」只给四个「自定义」来源
+### 插件只接管四个「自定义」来源，别的一概不动
 
 能存多个 API 的只有这四个 **Chat Completion Source**：
 
@@ -27,9 +27,12 @@ API密钥                  [••••••••••••••••] [�
 - Custom (Claude Messages) / 自定义（Claude 消息）
 - Custom (Gemini Interactions) / 自定义（Gemini 交互）
 
-只有它们能填自己的端点，也就是能接中转站，所以才需要存多份。别家（OpenAI、Claude、Google、
-OpenRouter、DeepSeek…）的端点是写死的，存多份没有意义 —— 所以选它们的时候
-「当前API预设 / 预设名称 / 保存预设」**整套都不出现**，面板只做美化：
+只有它们能填自己的端点，也就是能接中转站，所以才需要存多份。
+
+**除这四个之外，插件不改任何东西**：别的 22 个聊天补全来源（OpenAI、Claude、Google、
+OpenRouter、DeepSeek…），以及**文本补全 / NovelAI / AI Horde / KoboldAI Classic**
+这些 API 类型，界面**和 TauriTavern 原版逐字符一致** —— 不搬字段、不隐藏任何东西、
+不改任何标签，只叠加美化（统一高度 / 宽度 / 间距 / 对齐）。比如 Claude：
 
 ```
 API                     [Chat Completion ▾]
@@ -40,8 +43,11 @@ Reverse Proxy           ▾
                         [加载模型][Cancel]
 ```
 
-字段等宽等高、间距统一、左边缘对齐，和上面那套完全一致。这条可以在设置里关掉
-（「API 预设只给四个「自定义」来源」），关掉后所有来源都有预设。
+字段等宽等高、间距统一、左边缘对齐，和上面那套一个节奏。文本补全那边同理：
+「连接配置」「API」「API Type」「API key」「Server URL」全是原生的位置和文案，
+只是控件从 24~25px 长到 34px、图标按钮变成 34×34 正方形、Connect/Cancel 30px。
+
+这条可以在设置里关掉（「只接管四个「自定义」来源」），关掉后所有聊天补全来源都走完整重排。
 
 顺手清掉的东西：
 
@@ -101,8 +107,9 @@ https://github.com/tqzbceb/claude-plug-in
 | 密钥框加「小眼睛」查看明文 | 默认开；关掉则密钥框恢复原生明文显示 |
 | 连接配置只留新建/删除（保存挪到按钮行） | 默认开；关掉则详情/改名/重载/保存全部回到原位 |
 | 显示「预设名称」输入框 | 默认开 |
-| API 预设只给四个「自定义」来源 | 默认开；关掉则所有来源都有「当前API预设 / 预设名称 / 保存预设」 |
+| 只接管四个「自定义」来源（其余只做美化） | 默认开；关掉则所有聊天补全来源都走完整重排 |
 | 模型列表加载后再显示 | 关掉则模型列表一直显示 |
+| 各家额外字段也收进面板 | 默认开（只对被接管的来源有意义） |
 | 调试日志 | 打印找不到的选择器，排障用 |
 
 打开折叠时，展开状态会被记住。
@@ -214,5 +221,25 @@ v2.6.0 的改动，逐个 source 实测过（预览页里把 26 个 Chat Complet
 - 26 个来源逐一实测：单行控件全部 34px 等高、按钮 30px、没有重复标题、没有被拆散的抽屉。
 - 逛完全部 26 个来源再回到 custom、连续 `apply()` 3 次：装配态逐字符不变；
   关掉插件后 `#rm_api_block` 与加载前**逐字符一致**（连开关 3 轮都一致）。
+
+v3.0.0 把边界收紧成一条规则：**插件只碰四个「自定义」来源，别的只叠加 CSS 美化**。
+
+- 删掉了「API 只留文本补全 / 聊天补全」这个开关 —— 它会把 NovelAI / AI Horde / KoboldAI
+  从 API 下拉里藏起来，属于改动原版，不该做。现在 API 下拉是原样的 5 项。
+- 非自定义来源不再隐藏原生的「连接配置」块，也不再隐藏「发送测试信号」、不再动小钥匙和提示。
+  这些来源下插件对 DOM 的改动是**零**。
+- 美化（`.ttal-panel`）现在覆盖到所有 API 类型，文本补全 / NovelAI / AI Horde / KoboldAI
+  也跟着统一尺寸；只在被接管时才额外加 `.ttal-managed`（几条只对重排版式成立的规则挂在它上面）。
+
+验收方式是**逐字符比对**：预览页在插件加载前存一份 `#rm_api_block` 的原始 innerHTML，
+遍历所有状态后逐一比对（实测全部通过）：
+
+- 22 个非自定义聊天补全来源：DOM 与原版逐字符一致
+- 文本补全 / NovelAI / AI Horde / KoboldAI Classic 四个 API 类型：逐字符一致
+- 文本补全下 15 个 API Type（Aphrodite、DreamGen、Featherless、Generic、HuggingFace、
+  InfermaticAI、KoboldCpp、llama.cpp、Mancer、Ollama、OpenRouter、TabbyAPI、
+  Text Generation WebUI、TogetherAI、vLLM）：逐字符一致
+- 四个自定义来源：正常接管，连续 `apply()` 3 次装配态不变
+- 在上述状态之间乱切一通后关掉插件：`#rm_api_block` 与加载前逐字符一致，`.ttal-panel` 也摘除
 
 未在真机 TauriTavern 上跑过。
