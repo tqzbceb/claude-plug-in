@@ -59,3 +59,10 @@
 #ttal_root .ttal-editor-body .text_pole {
     max-width: 100%;
 }
+
+/* ---- 密钥框右边的小眼睛 ---- */
+
+#ttal_root .ttal-eye {
+    flex: 0 0 auto;
+    align-self: center;
+}

@@ -30,11 +30,12 @@ const ROOT_ID = 'ttal_root';
 
 const DEFAULT_SETTINGS = {
     enabled: true,
-    collapseEditor: true,    // 端点/密钥/模型名/模型列表 收进折叠区
+    collapseEditor: false,   // 端点/密钥/模型名/模型列表 收进折叠区（用户要常显，默认关）
     editorOpen: false,       // 折叠区当前是否展开（记住上次状态）
     customLabels: true,      // 用中文新标签替换原生标签
     hideHints: true,         // 隐藏新手提示与「管理 API 密钥」按钮
     hideTestButton: true,    // 隐藏「发送测试信号」按钮（会真的花钱，用户明确不要）
+    keyReveal: true,         // 密钥框右边加「小眼睛」，点一下看明文
     lazyModelList: true,     // 模型列表默认隐藏，加载成功后显示
     debug: false,
 };
@@ -75,6 +76,8 @@ const LABELS = {
     modelList: ['模型列表', 'Model List'],
     loadModels: ['加载模型', 'Load Models'],
     additionalParams: ['附加参数', 'Additional Parameters'],
+    showKey: ['显示密钥明文', 'Show key'],
+    hideKey: ['隐藏密钥', 'Hide key'],
 };
 
 /* ------------------------------------------------------------------ utils */
@@ -519,6 +522,68 @@ function layoutNativeField(slot, selector, labelText) {
     return adoptGroup(slot, ctrl, labelText);
 }
 
+/**
+ * 密钥框右边的「小眼睛」。
+ * 原生的密钥框是 type="text"（明文），所以本插件默认把它遮成圆点，点眼睛才看明文。
+ * - 单例合成节点，每轮装配跟着当前 source 的密钥框走
+ * - type 的改写走 patchAttr，teardown() 还原成原生的 text
+ * - 框里是空的（存过密钥后客户端会清空输入框）就直接开原生「查看隐藏的 API 密钥」弹窗
+ */
+function maskKey(input) {
+    if (input && input.type !== 'password') patchAttr(input, 'type', 'password');
+}
+
+function setEyeState(reveal) {
+    const eye = ui.eye;
+    if (!eye) return;
+    ui.eyeRevealed = reveal;
+    eye.classList.toggle('fa-eye-slash', reveal);
+    eye.classList.toggle('fa-eye', !reveal);
+    eye.title = reveal ? t('hideKey') : t('showKey');
+}
+
+function keyEye() {
+    if (ui.eye) return ui.eye;
+    const eye = markSynthetic(document.createElement('div'));
+    eye.className = 'menu_button menu_button_icon fa-solid fa-eye ttal-eye';
+    eye.title = t('showKey');
+    eye.addEventListener('click', () => {
+        const input = ui.eyeInput;
+        if (!input) return;
+        const reveal = !ui.eyeRevealed;
+        patchAttr(input, 'type', reveal ? 'text' : 'password');
+        setEyeState(reveal);
+        if (reveal && !input.value) {
+            // 框里没东西：明文也看不到什么，直接开原生的已存密钥弹窗
+            document.querySelector('#viewSecrets')?.click();
+        }
+    });
+    ui.eye = eye;
+    return eye;
+}
+
+/** 把小眼睛放到密钥输入框右边（同一行内，不占独立一行） */
+function mountKeyEye(input) {
+    if (!cfg().keyReveal) {
+        ui.eye?.remove();
+        ui.eyeInput = null;
+        ui.eyeRevealed = false;
+        return;
+    }
+    const eye = keyEye();
+    const switched = ui.eyeInput !== input;
+    ui.eyeInput = input;
+    if (input.nextElementSibling !== eye) input.after(eye);
+    passUsed?.add(eye); // 万一它成了槽位的直接子节点，别被 sweepSlots 当残留清掉
+    if (switched) {
+        // 换了 source：新框一律先遮上，图标复位
+        maskKey(input);
+        setEyeState(false);
+    } else if (!ui.eyeRevealed) {
+        maskKey(input);
+    }
+}
+
 /** API 密钥：搬组 + 干掉右边的「管理 API 密钥」小钥匙 */
 function layoutKey(slot, fields) {
     const input = fields.key ? native(fields.key) : null;
@@ -531,6 +596,7 @@ function layoutKey(slot, fields) {
     if (cfg().hideHints) {
         for (const btn of slot.querySelectorAll('.manage-api-keys')) hideNode(btn);
     }
+    mountKeyEye(input);
 }
 
 /** 按钮行：整行搬过来，只改「Connect」「Additional Parameters」的字 */
@@ -675,6 +741,9 @@ function teardown() {
         clearTimeout(modelWatch?.timer);
         modelWatch = null;
 
+        ui.eye?.remove();
+        ui.eyeInput = null;
+        ui.eyeRevealed = false;
         releaseAll();
         unpatchAll();
         ui.root?.remove();
@@ -753,6 +822,7 @@ const SETTING_ITEMS = [
     ['customLabels', '使用中文标签', 'Use custom labels'],
     ['hideHints', '隐藏新手提示与管理密钥按钮', 'Hide hints and the manage-keys button'],
     ['hideTestButton', '隐藏「发送测试信号」按钮', 'Hide the Test Message button'],
+    ['keyReveal', '密钥框加「小眼睛」查看明文', 'Add an eye button to reveal the key'],
     ['lazyModelList', '模型列表加载后再显示', 'Reveal model list only after loading'],
     ['debug', '调试日志', 'Debug logging'],
 ];
@@ -787,7 +857,7 @@ function buildSettingsUI() {
             saveCfg();
             if (key === 'enabled' && !box.checked) {
                 teardown();
-            } else if (key === 'customLabels' || key === 'hideHints' || key === 'hideTestButton') {
+            } else if (key === 'customLabels' || key === 'hideHints' || key === 'hideTestButton' || key === 'keyReveal') {
                 // 这两项改写了原生节点，先回滚再重排
                 teardown();
                 setTimeout(() => schedule(true), 80);
