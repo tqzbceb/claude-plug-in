@@ -1,6 +1,6 @@
 /*
  * API 面板重排 —— 只做布局，不定义任何颜色 / 字体 / 圆角 / 阴影。
- * 视觉风格 100% 交给原生 class（text_pole / menu_button / range-block ...），
+ * 视觉风格 100% 交给原生 class（text_pole / menu_button / inline-drawer ...），
  * 因此换主题、换美化插件都不会和本扩展打架。
  */
 
@@ -27,62 +27,35 @@
     margin: 0;
 }
 
-#ttal_root .ttal-hint {
-    opacity: 0.7;
-    line-height: 1.3;
-}
+/* ---- 折叠区「新建 / 编辑 API」---- */
 
-#ttal_root .ttal-row {
-    gap: 5px;
+#ttal_root .ttal-editor {
     width: 100%;
 }
 
-#ttal_root .ttal-grow {
-    min-width: 0;
-    flex: 1 1 auto;
+#ttal_root .ttal-editor-header {
+    gap: 6px;
+    cursor: pointer;
+    user-select: none;
+    padding: 2px 0;
 }
 
-/* 图标按钮（新增预设 / 删除预设 / 眼睛）压成正方形，别被 flex 拉长 */
-#ttal_root .ttal-icon-button {
-    flex: 0 0 auto;
-    margin: 0;
-    align-self: center;
+#ttal_root .ttal-caret {
+    transition: transform 0.15s ease;
+    transform: rotate(-90deg);
 }
 
-/* 最大回复长度 + 温度：两列并排 */
-#ttal_root .ttal-two-col {
+#ttal_root .ttal-editor.ttal-open .ttal-caret {
+    transform: rotate(0deg);
+}
+
+#ttal_root .ttal-editor-body {
     gap: 8px;
     width: 100%;
-    flex-wrap: nowrap;
+    padding-top: 4px;
 }
 
-#ttal_root .ttal-two-col .ttal-cell {
-    min-width: 0;
-    gap: 3px;
-}
-
-#ttal_root .ttal-cell-title {
-    margin: 0;
-}
-
-/* 默认预设不可重命名时的只读提示（只降不透明度，不改颜色） */
-#ttal_root .ttal-readonly {
-    opacity: 0.6;
-    cursor: not-allowed;
-}
-
-#ttal_root textarea#ttal_custom_include_body {
-    min-height: 90px;
-    resize: vertical;
-}
-
-/* 窄屏（手机端）两列改单列 */
-@media (max-width: 500px) {
-    #ttal_root .ttal-two-col {
-        flex-wrap: wrap;
-    }
-
-    #ttal_root .ttal-two-col .ttal-cell {
-        flex: 1 1 100%;
-    }
+/* 折叠区里的原生输入框铺满宽度 */
+#ttal_root .ttal-editor-body .text_pole {
+    max-width: 100%;
 }
