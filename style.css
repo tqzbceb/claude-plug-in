@@ -287,6 +287,12 @@
     line-height: 1;
 }
 
+/* 保存中：只降透明度，不改尺寸（不然按钮会跳一下） */
+#ttal_root .ttal-busy {
+    opacity: 0.6;
+    pointer-events: none;
+}
+
 /* ---- 5. 折叠区「新建 / 编辑 API」（默认关闭，设置里可开）---- */
 
 #ttal_root .ttal-editor {

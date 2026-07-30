@@ -98,6 +98,18 @@ const LABELS = {
     saveProfile: ['保存预设', 'Save Profile'],
     showKey: ['显示密钥明文', 'Show key'],
     hideKey: ['隐藏密钥', 'Hide key'],
+    newProfile: ['新建一个空白预设', 'Start a blank preset'],
+    saveProfileHint: [
+        '保存预设：没选预设或改了「预设名称」就新建一个，否则覆盖当前选中的',
+        'Save: creates a new preset when none is selected or the name changed, otherwise overwrites the selected one',
+    ],
+    blankReady: ['已清空，填好端点 / 密钥 / 模型名，再点「保存预设」', 'Cleared — fill in endpoint / key / model, then Save Profile'],
+    keyExposureOff: [
+        '客户端不让看密钥明文：去 TauriTavern 设置里打开「Allow Keys Exposure」再重启',
+        'Key exposure is disabled — enable Allow Keys Exposure in TauriTavern settings and restart',
+    ],
+    keyReadFailed: ['没能读到已存的密钥', 'Could not read the stored key'],
+    keyEmpty: ['这个来源在客户端里还没存过密钥', 'No key stored for this source yet'],
 };
 
 /* ------------------------------------------------------------------ utils */
@@ -275,6 +287,27 @@ function addCls(el, ...names) {
 /** 可逆隐藏 */
 function hideNode(el) {
     addCls(el, 'ttal-hidden');
+}
+
+function toast(kind, text) {
+    const tr = globalThis.toastr;
+    if (tr && typeof tr[kind] === 'function') tr[kind](text, '', { timeOut: 3500 });
+    else dbg(text);
+}
+
+/** 等某个条件成立（超时就算了，不卡住流程） */
+function waitFor(test, timeout = 6000, step = 80) {
+    return new Promise((resolve) => {
+        const deadline = Date.now() + timeout;
+        const tick = () => {
+            let ok = false;
+            try { ok = !!test(); } catch { ok = false; }
+            if (ok) return resolve(true);
+            if (Date.now() >= deadline) return resolve(false);
+            setTimeout(tick, step);
+        };
+        tick();
+    });
 }
 
 function unpatchAll() {
@@ -682,18 +715,28 @@ function layoutProfile(slot) {
         const heading = block.querySelector('h3 span[data-i18n], h3 span');
         if (heading) patchText(heading, t('profile'));
     }
-    // 那排图标是原生「连接配置」的功能，一个都不删，只把用不上的隐藏掉。
-    // 「保存」（#update_connection_profile）会被 layoutButtons 挪到按钮行去。
+    // 那排图标一个都不删，只把用不上的隐藏掉。原生的「+」和「保存」也藏起来 ——
+    // 它们的语义不是我们要的（详见 newProfileButton / saveProfile），但留在 DOM 里，
+    // 我们那两颗按钮最后还是转手给它们干活。
     if (cfg().slimProfileButtons) {
         for (const id of PROFILE_EXTRA_BUTTONS) hideNode(native(`#${id}`));
+        const create = native('#create_connection_profile');
+        if (create?.parentElement) {
+            const mine = newProfileButton();
+            if (mine.parentElement !== create.parentElement || mine.nextElementSibling !== create) {
+                create.parentElement.insertBefore(mine, create);
+            }
+            hideNode(create);
+        }
     }
 }
 
-/** 连接配置那排里，日常用不上的按钮：详情 / 改名 / 重载 */
+/** 连接配置那排里，日常用不上的按钮：详情 / 改名 / 重载 / 保存（保存挪到按钮行） */
 const PROFILE_EXTRA_BUTTONS = [
     'view_connection_profile',
     'edit_connection_profile',
     'reload_connection_profile',
+    'update_connection_profile',
 ];
 
 /* ---------------- 预设名称：自己加的输入框，喂给原生命名弹窗 ---------------- */
@@ -715,7 +758,7 @@ function profileNameInput() {
  * 这里在点击后把我们输入框里的名字塞进那个弹窗，省得每次手打。
  * 找不到弹窗就什么都不做 —— 原生流程照旧。
  */
-function feedNameToPopup() {
+function feedNameToPopup({ confirm = false } = {}) {
     const wanted = ui.nameInput?.value?.trim();
     if (!wanted) return;
     const deadline = Date.now() + 2000;
@@ -730,6 +773,15 @@ function feedNameToPopup() {
                 field.focus?.();
                 field.select?.();
                 dbg('profile name fed to popup:', wanted);
+                // 名字是用户自己填在「预设名称」里的，意思已经很明确了，就不用他再确认一遍
+                if (confirm) {
+                    const dialog = field.closest('dialog') || scope;
+                    setTimeout(() => {
+                        const ok = dialog.querySelector('.popup-button-ok, .popup_ok, [data-result="1"]');
+                        if (ok) ok.click();
+                        else dbg('弹窗确认按钮没找到，等用户自己点');
+                    }, 120);
+                }
                 return;
             }
         }
@@ -747,9 +799,97 @@ function layoutProfileName(slot) {
     slot.classList.remove('ttal-hidden');
     adopt(slot, cachedLabel(slot, t('profileName')));
     adopt(slot, profileNameInput());
+}
 
-    for (const id of ['create_connection_profile', 'edit_connection_profile', 'update_connection_profile']) {
-        hook(native(`#${id}`), 'nameHook', 'click', () => feedNameToPopup());
+/* -------------------- 「新建」：清空字段，开一张白纸 --------------------
+ * 原生那颗 + 是「把当前设置存成一个新预设」，不是「新建一个空配置」。
+ * 想加一个新中转站的时候需要的是后者，所以这颗按钮自己实现。
+ */
+
+function newProfileButton() {
+    if (ui.newBtn) return ui.newBtn;
+    const btn = markSynthetic(document.createElement('div'));
+    btn.id = 'ttal_new_profile';
+    btn.className = 'menu_button fa-solid fa-file-circle-plus fa-fw ttal-new-profile';
+    btn.title = t('newProfile');
+    btn.addEventListener('click', () => blankProfile());
+    ui.newBtn = btn;
+    return btn;
+}
+
+function blankProfile() {
+    clearRevealedKey();
+    // 预设下拉回到 <None>：不这么做的话「保存预设」会以为要覆盖当前选中的那个
+    const select = native('#connection_profiles');
+    if (select && select.value !== '') {
+        select.value = '';
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    if (ui.nameInput) ui.nameInput.value = '';
+    const fields = fieldsFor(currentSource());
+    for (const selector of [fields.endpoint, fields.key, fields.modelName]) {
+        const el = selector ? native(selector) : null;
+        if (!el || el.value === '') continue;
+        el.value = '';
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    ui.nameInput?.focus();
+    toast('info', t('blankReady'));
+    dbg('blank preset ready');
+}
+
+/* -------------------- 「保存预设」：该新建就新建，该覆盖就覆盖 --------------------
+ * 原生 #update_connection_profile 只能覆盖已选中的预设，没选中时它是灰的（点不动）。
+ * 这颗按钮自己判断走哪条路，所以永远不会灰。
+ */
+
+function saveProfileButton() {
+    if (ui.saveBtn) return ui.saveBtn;
+    const btn = markSynthetic(document.createElement('div'));
+    btn.id = 'ttal_save_profile';
+    btn.className = 'menu_button menu_button_icon ttal-save-profile';
+    btn.title = t('saveProfileHint');
+    const icon = document.createElement('i');
+    icon.className = 'fa-solid fa-floppy-disk';
+    btn.append(icon, document.createTextNode(t('saveProfile')));
+    btn.addEventListener('click', () => { saveProfile().catch((e) => warn('save profile failed', e)); });
+    ui.saveBtn = btn;
+    return btn;
+}
+
+async function saveProfile() {
+    if (ui.saveBusy) return;
+    ui.saveBusy = true;
+    addCls(ui.saveBtn, 'ttal-busy');
+    try {
+        clearRevealedKey();
+        const select = native('#connection_profiles');
+        const wantedName = ui.nameInput?.value?.trim() || '';
+        const selectedId = select?.value || '';
+        const selectedName = select?.selectedOptions?.[0]?.textContent?.trim() || '';
+
+        // 密钥框里还有手打的明文：先走原生「加载模型」把它存进客户端。
+        // 预设里记的是密钥的编号而不是密钥本身，不先存的话新预设指向的还是上一把密钥。
+        const keySel = fieldsFor(currentSource()).key;
+        const keyEl = keySel ? native(keySel) : null;
+        if (keyEl?.value?.trim()) {
+            dbg('key pending → 先连接一次把密钥存进客户端');
+            native('#api_button_openai')?.click();
+            await waitFor(() => !keyEl.value.trim());   // 客户端存完密钥会清空输入框
+        }
+
+        const makeNew = !selectedId || (wantedName && wantedName !== selectedName);
+        if (makeNew) {
+            feedNameToPopup({ confirm: !!wantedName });
+            native('#create_connection_profile')?.click();
+        } else {
+            native('#update_connection_profile')?.click();
+        }
+        dbg('save preset →', makeNew ? 'create' : 'update', wantedName || selectedName);
+    } finally {
+        ui.saveBusy = false;
+        ui.saveBtn?.classList.remove('ttal-busy');
     }
 }
 
@@ -769,8 +909,51 @@ function layoutNativeField(slot, selector, labelText) {
  * 原生的密钥框是 type="text"（明文），所以本插件默认把它遮成圆点，点眼睛才看明文。
  * - 单例合成节点，每轮装配跟着当前 source 的密钥框走
  * - type 的改写走 patchAttr，teardown() 还原成原生的 text
- * - 框里是空的（存过密钥后客户端会清空输入框）就直接开原生「查看隐藏的 API 密钥」弹窗
+ * - 框里是空的（客户端存下密钥后会把输入框清空）就问客户端要明文，就地填回框里。
+ *   这条走 /api/secrets/find，跟原生「查看隐藏的 API 密钥」是同一个后端开关，
+ *   没开的话客户端会回 403，这时给一句提示，不再弹那个原生窗口。
  */
+
+/** 当前密钥框对应的密钥名。聊天补全这边输入框 id 就等于密钥名（api_key_custom…） */
+function secretKeyName() {
+    const id = ui.eyeInput?.id;
+    if (id && id.startsWith('api_key_')) return id;
+    const source = currentSource();
+    return source ? `api_key_${source}` : '';
+}
+
+async function fetchStoredKey(keyName) {
+    if (!keyName) return { ok: false, status: 0 };
+    const headers = ctx()?.getRequestHeaders?.() || { 'Content-Type': 'application/json' };
+    try {
+        const res = await fetch('/api/secrets/find', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ key: keyName }),
+        });
+        if (!res.ok) return { ok: false, status: res.status };
+        const data = await res.json();
+        return { ok: true, value: typeof data?.value === 'string' ? data.value : '' };
+    } catch (error) {
+        warn('read secret failed', error);
+        return { ok: false, status: 0 };
+    }
+}
+
+/**
+ * 把我们填进去的明文再抹掉。
+ * 留着的话点「加载模型」会把同一把密钥又写一遍（客户端是「框里有东西就存」）。
+ * 只清我们自己填的（ui.eyeInjected）—— 用户手打的一个字都不动。
+ */
+function clearRevealedKey() {
+    if (!ui.eyeInjected) return;
+    ui.eyeInjected = false;
+    const input = ui.eyeInput;
+    if (!input) return;
+    input.value = '';
+    maskKey(input);
+    setEyeState(false);
+}
 function maskKey(input) {
     if (input && input.type !== 'password') patchAttr(input, 'type', 'password');
 }
@@ -789,24 +972,47 @@ function keyEye() {
     const eye = markSynthetic(document.createElement('div'));
     eye.className = 'menu_button fa-solid fa-eye fa-fw ttal-eye';
     eye.title = t('showKey');
-    eye.addEventListener('click', () => {
-        const input = ui.eyeInput;
-        if (!input) return;
-        const reveal = !ui.eyeRevealed;
-        patchAttr(input, 'type', reveal ? 'text' : 'password');
-        setEyeState(reveal);
-        if (reveal && !input.value) {
-            // 框里没东西：明文也看不到什么，直接开原生的已存密钥弹窗
-            document.querySelector('#viewSecrets')?.click();
-        }
-    });
+    eye.addEventListener('click', () => { revealToggle().catch((e) => warn('reveal failed', e)); });
     ui.eye = eye;
     return eye;
+}
+
+async function revealToggle() {
+    const input = ui.eyeInput;
+    if (!input) return;
+
+    if (ui.eyeRevealed) {                        // 收起来
+        clearRevealedKey();
+        patchAttr(input, 'type', 'password');
+        setEyeState(false);
+        return;
+    }
+    if (input.value) {                           // 框里是刚打的，直接看
+        patchAttr(input, 'type', 'text');
+        setEyeState(true);
+        return;
+    }
+
+    // 框是空的：密钥已经存进客户端了，去把它要回来
+    const stored = await fetchStoredKey(secretKeyName());
+    if (!stored.ok) {
+        toast('warning', stored.status === 403 ? t('keyExposureOff') : t('keyReadFailed'));
+        return;
+    }
+    if (!stored.value) {
+        toast('info', t('keyEmpty'));
+        return;
+    }
+    input.value = stored.value;                  // 不派发 input 事件：只是给人看，不改客户端状态
+    ui.eyeInjected = true;
+    patchAttr(input, 'type', 'text');
+    setEyeState(true);
 }
 
 /** 把小眼睛放到密钥输入框右边（同一行内，不占独立一行） */
 function mountKeyEye(input) {
     if (!cfg().keyReveal) {
+        clearRevealedKey();
         ui.eye?.remove();
         ui.eyeInput = null;
         ui.eyeRevealed = false;
@@ -814,6 +1020,7 @@ function mountKeyEye(input) {
     }
     const eye = keyEye();
     const switched = ui.eyeInput !== input;
+    if (switched) clearRevealedKey();            // 上一个来源里注入的明文别跟着跑
     ui.eyeInput = input;
     if (input.nextElementSibling !== eye) input.after(eye);
     passUsed?.add(eye); // 万一它成了槽位的直接子节点，别被 sweepSlots 当残留清掉
@@ -930,23 +1137,18 @@ function layoutButtons(slot) {
     if (row && row !== slot && !row.id) adopt(slot, row);
     else adopt(slot, connect);
 
-    // 「保存预设」= 原生 #update_connection_profile，从连接配置那排挪到这里，
-    // 位置在「加载模型」和「附加参数」之间。逻辑还是原生的。
+    // 「保存预设」放在「加载模型」和「附加参数」之间。
+    // 这是我们自己的按钮：原生那颗只能覆盖已选中的预设，没选中时是灰的，点不动。
     if (cfg().slimProfileButtons && managed()) {
-        const save = native('#update_connection_profile');
         const buttonRow = connect.parentElement;
-        if (save && buttonRow) {
+        if (buttonRow) {
+            const save = saveProfileButton();
             const extra = native('#customize_additional_parameters');
             const seat = extra && extra.parentElement === buttonRow ? extra : null;
             if (save.parentElement !== buttonRow || (seat && save.nextElementSibling !== seat)) {
-                track(save);
                 buttonRow.insertBefore(save, seat);
             }
             passUsed?.add(save);
-            if (cfg().customLabels) {
-                addCls(save, 'menu_button_icon', 'ttal-save-profile');
-                patchText(save, t('saveProfile'));
-            }
         }
     }
 
@@ -956,6 +1158,16 @@ function layoutButtons(slot) {
         if (extra) patchText(extra, t('additionalParams'));
     }
     hook(connect, 'modelLoad', 'click', () => beginModelLoad());
+    // 客户端的点击处理器是在我们之前绑的，同一个元素上会先跑它，
+    // 所以这道保险挂在 document 的捕获阶段：无论谁触发连接，都先把注入的明文抹掉。
+    hook(document, 'revealGuard', 'click', (event) => {
+        if (event.target?.closest?.('#api_button_openai, #ttal_save_profile, #create_connection_profile, #update_connection_profile')) {
+            clearRevealedKey();
+        }
+    }, true);
+    // 用户在密钥框里自己动过手，就不算「我们注入的」了，别再替他清
+    const keySel = fieldsFor(currentSource()).key;
+    hook(keySel ? native(keySel) : null, 'keyTyped', 'input', () => { ui.eyeInjected = false; }, false);
 }
 
 /**
@@ -1104,10 +1316,13 @@ function restoreNatives() {
         clearTimeout(modelWatch?.timer);
         modelWatch = null;
 
+        clearRevealedKey();
         ui.eye?.remove();
         ui.eyeInput = null;
         ui.eyeRevealed = false;
         ui.nameInput?.remove();
+        ui.newBtn?.remove();
+        ui.saveBtn?.remove();
         unhookAll();
         releaseAll();
         unpatchAll();
