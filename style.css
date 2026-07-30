@@ -149,6 +149,17 @@
     gap: 4px;
 }
 
+/* 「其它」槽位里是各家自己的字段，一个槽里塞了好几组：
+   组内还是 4px，遇到下一个标签就补回 12px，跟上面几组的节奏对齐 */
+#ttal_root .ttal-slot-extras > h3:not(:first-child),
+#ttal_root .ttal-slot-extras > h4:not(:first-child),
+#ttal_root .ttal-slot-extras > h5:not(:first-child),
+#ttal_root .ttal-slot-extras > .inline-drawer:not(:first-child),
+#ttal_root .ttal-slot-extras > .inline-drawer-toggle:not(:first-child),
+#ttal_root .ttal-slot-extras > label.checkbox_label:not(:first-child) {
+    margin-top: calc(var(--ttal-row-gap) - var(--ttal-label-gap));
+}
+
 /* 行内容器：垂直居中、间距一致；行距交给 #ttal_root 的 gap 管 */
 #ttal_root .ttal-slot .flex-container {
     align-items: center;

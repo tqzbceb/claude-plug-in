@@ -38,35 +38,49 @@ const DEFAULT_SETTINGS = {
     keyReveal: true,         // 密钥框右边加「小眼睛」，点一下看明文
     slimProfileButtons: true,// 连接配置那排只留「新建」「删除」，「保存」挪到按钮行
     profileNameField: true,  // 加一个「预设名称」输入框，新建时自动填进命名弹窗
-    lazyModelList: true,     // 模型列表默认隐藏，加载成功后显示
+    lazyModelList: true,     // 模型列表默认隐藏，加载成功后显示（只对另有「模型名」输入框的 source 生效）
+    adoptExtras: true,       // 各家自己的额外字段也收进面板（Azure 部署名、Vertex 区域…）
+    slimApiList: true,       // API 下拉只留「文本补全 / 聊天补全」
     debug: false,
 };
 
 /** 折叠区内部的槽位顺序（自上而下） */
-const EDITOR_SLOTS = ['profileName', 'endpoint', 'key', 'modelName', 'modelList', 'buttons'];
+const EDITOR_SLOTS = ['profileName', 'endpoint', 'key', 'modelName', 'modelList', 'extras', 'buttons'];
 
-/** 各 chat completion source 的字段选择器；未列出的走通用推导规则 */
+/**
+ * 「Custom (OpenAI Responses / Claude Messages / Gemini Interactions)」在下拉框里是
+ * 独立选项，但客户端内部把它们都算作 custom（openai.js: applyChatCompletionSourceSelection
+ * 只改 custom_api_format），字段用的还是 custom 那一套 markup。
+ * 不做这个归一化，选中它们时面板会一个字段都找不到。
+ */
+const SOURCE_ALIASES = {
+    custom_openai_responses: 'custom',
+    custom_claude_messages: 'custom',
+    custom_gemini_interactions: 'custom',
+};
+
+/**
+ * 各 chat completion source 的字段选择器。
+ * key 一律是 #api_key_<source>，modelList 一律是 #model_<source>_select，
+ * 只有对不上的、或者额外有端点 / 模型名输入框的才写在这里。
+ */
 const SOURCE_FIELDS = {
     custom: {
         endpoint: '#custom_api_url_text',
-        key: '#api_key_custom',
         modelName: '#custom_model_id',
-        modelList: '#model_custom_select',
     },
-    custom_openai_responses: {
-        endpoint: '#custom_openai_responses_api_url_text',
-        key: '#api_key_custom_openai_responses',
-        modelName: '#custom_openai_responses_model_id',
-        modelList: '#model_custom_openai_responses_select',
+    azure_openai: {
+        endpoint: '#azure_base_url',
+        modelName: '#azure_deployment_name',
+        modelList: '#azure_openai_model',
+        // 这两个字段名跟通用叫法差得远，别把原生标签改成「端点」「模型名」
+        labels: { endpoint: ['端点（Azure Base URL）', 'Endpoint (Azure Base URL)'], modelName: ['部署名（Deployment）', 'Deployment Name'] },
     },
-    openai: { key: '#api_key_openai', modelList: '#model_openai_select' },
-    claude: { key: '#api_key_claude', modelList: '#model_claude_select' },
-    makersuite: { key: '#api_key_makersuite', modelList: '#model_google_select' },
-    vertexai: { key: '#api_key_vertexai', modelList: '#model_vertexai_select' },
-    openrouter: { key: '#api_key_openrouter', modelList: '#model_openrouter_select' },
-    mistralai: { key: '#api_key_mistralai', modelList: '#model_mistralai_select' },
-    deepseek: { key: '#api_key_deepseek', modelList: '#model_deepseek_select' },
-    xai: { key: '#api_key_xai', modelList: '#model_xai_select' },
+    zai: {
+        endpoint: '#zai_endpoint',
+        labels: { endpoint: ['端点（Z.AI 接口）', 'Endpoint (Z.AI)'] },
+    },
+    makersuite: { modelList: '#model_google_select' },
 };
 
 const LABELS = {
@@ -203,6 +217,27 @@ function releaseAll() {
 /** 属性 / 文本改写的还原记录 */
 const patched = new Map();
 
+/** 我们挂在原生节点上的监听：tag 去重，teardown 时精确解绑 —— 不往真实 DOM 写任何标记属性 */
+const hooks = new Map();
+
+function hook(el, tag, type, fn, capture = true) {
+    if (!el) return;
+    let list = hooks.get(el);
+    if (!list) hooks.set(el, (list = []));
+    if (list.some((h) => h.tag === tag)) return;
+    el.addEventListener(type, fn, capture);
+    list.push({ tag, type, fn, capture });
+}
+
+function unhookAll() {
+    for (const [el, list] of hooks) {
+        for (const h of list) {
+            try { el.removeEventListener(h.type, h.fn, h.capture); } catch { /* ignore */ }
+        }
+    }
+    hooks.clear();
+}
+
 function patchRecord(el) {
     if (!patched.has(el)) patched.set(el, {});
     return patched.get(el);
@@ -229,10 +264,17 @@ function patchAttr(el, name, value) {
     else if (el.getAttribute(name) !== value) el.setAttribute(name, value);
 }
 
+/** 可逆地补 class；幂等 —— 已经有的不再重复追加（否则每次 apply 都会把 class 越写越长） */
+function addCls(el, ...names) {
+    if (!el) return;
+    const missing = names.filter((n) => n && !el.classList.contains(n));
+    if (!missing.length) return;
+    patchAttr(el, 'class', `${el.className} ${missing.join(' ')}`.replace(/\s+/g, ' ').trim());
+}
+
 /** 可逆隐藏 */
 function hideNode(el) {
-    if (!el || el.classList.contains('ttal-hidden')) return;
-    patchAttr(el, 'class', `${el.className} ttal-hidden`.trim());
+    addCls(el, 'ttal-hidden');
 }
 
 function unpatchAll() {
@@ -266,6 +308,17 @@ function isNoteNode(el) {
     return false;
 }
 
+/**
+ * 标签和控件之间的夹层：一句说明、一个「去拿 key / 看用量 / 看余额」的链接。
+ * 里面一旦有真控件就不算，免得把别人的字段吞掉。
+ */
+function isSideNote(el) {
+    if (!el || el.nodeType !== 1) return false;
+    if (el.querySelector('input, select, textarea, .menu_button')) return false;
+    if (el.matches('span, small, p')) return true;
+    return !!el.querySelector('a') && (el.textContent || '').trim().length < 200;
+}
+
 /** 控件所属的 source 容器（最近的 [data-source] 祖先） */
 function sourceHostOf(el) {
     let node = el;
@@ -281,8 +334,35 @@ function sourceHostOf(el) {
  * 把一个原生控件展开成「标签 + 主体 + 补充说明」三段，方便整组搬移。
  * @returns {{label: Element|null, body: Element, extras: Element[]}|null}
  */
+/**
+ * 已经在槽位里的字段，直接沿用上一轮的分组。
+ * 不这么做的话，第二次装配时控件的 [data-source] 祖先已经换成了我们的槽位，
+ * groupOf 会重新判定出一个更小的主体（比如只剩那个 select），
+ * 原来一起搬过来的外层容器就被 sweepSlots 塞回原处 —— 面板下面于是多出一堆散件。
+ */
+function groupInSlot(ctrl) {
+    const slot = ctrl.closest?.('.ttal-slot');
+    if (!slot || !slot.dataset?.ttalSlot) return null;
+    let body = ctrl;
+    while (body.parentElement && body.parentElement !== slot) body = body.parentElement;
+    if (body.parentElement !== slot) return null;
+
+    const kids = Array.from(slot.children).filter(kid => !isSynthetic(kid));
+    const index = kids.indexOf(body);
+    if (index < 0) return null;
+    let label = null;
+    const leading = [];
+    for (const kid of kids.slice(0, index)) {
+        if (!label && kid.matches(HEADINGS)) label = kid;
+        else leading.push(kid);
+    }
+    return { label, body, leading, extras: kids.slice(index + 1) };
+}
+
 function groupOf(ctrl) {
     if (!ctrl) return null;
+    const settled = groupInSlot(ctrl);
+    if (settled) return settled;
     const host = sourceHostOf(ctrl);
     let body = ctrl;
 
@@ -301,12 +381,26 @@ function groupOf(ctrl) {
     }
     if (!body || body === document.body) return null;
 
+    // 往上找标签。标签和输入框之间常常还夹着一两行说明或一个链接
+    // （OpenAI 的「查看用量」、Claude 的「去控制台拿 key」、Chutes 的「看余额」……），
+    // 以前一碰到这种夹层就判定「没有标签」，于是原生标签留在原地、我们又造一个，
+    // 同一个字段出现两个标题。现在把夹层收进这一组，继续往上找真正的标签。
     let label = null;
+    const leading = [];
     let prev = body.previousElementSibling;
-    while (prev && (prev.nodeType !== 1 || prev.tagName === 'INPUT' || prev.tagName === 'DATALIST')) {
-        prev = prev.previousElementSibling;
+    while (prev) {
+        if (prev.nodeType !== 1 || prev.tagName === 'INPUT' || prev.tagName === 'DATALIST') {
+            prev = prev.previousElementSibling;
+            continue;
+        }
+        if (prev.matches(HEADINGS)) { label = prev; break; }
+        if (isNoteNode(prev) || isSideNote(prev)) {
+            leading.unshift(prev);
+            prev = prev.previousElementSibling;
+            continue;
+        }
+        break;
     }
-    if (prev && prev.matches(HEADINGS)) label = prev;
 
     const extras = [];
     let next = body.nextElementSibling;
@@ -314,7 +408,7 @@ function groupOf(ctrl) {
         extras.push(next);
         next = next.nextElementSibling;
     }
-    return { label, body, extras };
+    return { label, body, leading, extras };
 }
 
 /* ------------------------------------------------------- 合成控件构造 */
@@ -370,6 +464,11 @@ function adoptGroup(slot, ctrl, labelText) {
         if (labelText && cfg().customLabels) patchText(group.label, labelText);
     } else if (labelText) {
         adopt(slot, cachedLabel(slot, labelText));
+    }
+    // 夹层跟着一起搬：纯说明按 hideHints 隐藏，带链接的（看用量 / 拿 key）留着
+    for (const lead of group.leading || []) {
+        adopt(slot, lead);
+        if (cfg().hideHints && isNoteNode(lead)) hideNode(lead);
     }
     adopt(slot, group.body);
     for (const extra of group.extras) {
@@ -454,8 +553,15 @@ function applyEditorState() {
 
 /* --------------------------------------------------------- source / 字段 */
 
-function currentSource() {
+/** 下拉框里选的那一项（可能是 custom 的变体） */
+function rawSource() {
     return native('#chat_completion_source')?.value || '';
+}
+
+/** 客户端内部真正生效的 source，字段查找一律用这个 */
+function currentSource() {
+    const raw = rawSource();
+    return SOURCE_ALIASES[raw] || raw;
 }
 
 function isChatCompletion() {
@@ -466,11 +572,21 @@ function isChatCompletion() {
 /** SOURCE_FIELDS 里显式写了就用，否则按 SillyTavern 命名惯例推导 */
 function fieldsFor(source) {
     const base = SOURCE_FIELDS[source] || {};
+    const pick = (slot, fallback) => {
+        const override = base.labels?.[slot];
+        return override ? (isZh() ? override[0] : override[1]) : fallback;
+    };
     return {
         endpoint: base.endpoint ?? null,
         key: base.key ?? (source ? `#api_key_${source}` : null),
         modelName: base.modelName ?? null,
         modelList: base.modelList ?? (source ? `#model_${source}_select` : null),
+        label: {
+            endpoint: pick('endpoint', t('endpoint')),
+            key: pick('key', t('key')),
+            modelName: pick('modelName', t('modelName')),
+            modelList: pick('modelList', t('modelList')),
+        },
     };
 }
 
@@ -594,11 +710,7 @@ function layoutProfileName(slot) {
     adopt(slot, profileNameInput());
 
     for (const id of ['create_connection_profile', 'edit_connection_profile', 'update_connection_profile']) {
-        const btn = native(`#${id}`);
-        if (btn && !btn.dataset.ttalNameHook) {
-            btn.dataset.ttalNameHook = '1';
-            btn.addEventListener('click', () => feedNameToPopup(), true);
-        }
+        hook(native(`#${id}`), 'nameHook', 'click', () => feedNameToPopup());
     }
 }
 
@@ -683,7 +795,7 @@ function layoutKey(slot, fields) {
         return;
     }
     slot.classList.remove('ttal-hidden');
-    adoptGroup(slot, input, t('key'));
+    adoptGroup(slot, input, fields.label?.key || t('key'));
     // 空的密钥框给个占位提示，跟端点框一样有个小虚字。
     // 客户端自己往 placeholder 里写东西时（比如提示密钥已保存）不覆盖它。
     if (cfg().customLabels && !input.placeholder) patchAttr(input, 'placeholder', t('keyHint'));
@@ -691,6 +803,55 @@ function layoutKey(slot, fields) {
         for (const btn of slot.querySelectorAll('.manage-api-keys')) hideNode(btn);
     }
     mountKeyEye(input);
+}
+
+/* ------------------------------------------------- 各家自己的额外字段 */
+
+/**
+ * 当前 source 生效的原生表单块（[data-source] 顶层容器）。
+ * 判断规则照抄客户端 openai.js：逗号分隔白名单，data-source-mode="except" 时取反。
+ */
+function sourceHosts(source) {
+    const host = panelHost();
+    if (!host) return [];
+    return Array.from(host.querySelectorAll('[data-source]'))
+        .filter(el => !el.parentElement?.closest('[data-source]'))
+        .filter(el => {
+            const list = String(el.dataset.source || '').split(',').map(s => s.trim());
+            const matches = list.includes(source);
+            return el.dataset.sourceMode === 'except' ? !matches : matches;
+        });
+}
+
+/**
+ * 端点 / 密钥 / 模型之外，这一家还有的字段（Azure 的部署名与 API 版本、
+ * Vertex 的认证方式与区域、OpenRouter 的排序与服务商、反向代理抽屉……）
+ * 按原生顺序收进「其它」槽位，位置在模型列表之后、按钮行之前。
+ * 一个都不删、不改字，只是让它们也待在面板里，跟着同一套尺寸与间距走。
+ */
+function layoutExtras(slot) {
+    if (!cfg().adoptExtras) {
+        slot.classList.add('ttal-hidden');
+        return;
+    }
+    slot.classList.remove('ttal-hidden');
+    const hosts = new Set(sourceHosts(currentSource()));
+
+    // 第一步：上一轮已经搬进来、老家还是当前 source 的节点，原位留着。
+    // 少了这一步，第二次装配时原生容器已经空了，sweepSlots 会把它们全塞回去，
+    // 于是「重排一次好使、再重排一次就散架」。
+    for (const child of Array.from(slot.children)) {
+        if (isSynthetic(child)) continue;
+        const home = moved.get(child)?.anchor?.parentNode;
+        if (home && hosts.has(home)) adopt(slot, child);
+    }
+    // 第二步：还留在原生容器里的，按原生顺序补上
+    for (const host of hosts) {
+        for (const child of Array.from(host.children)) {
+            if (isSynthetic(child) || passUsed?.has(child)) continue;
+            adopt(slot, child);
+        }
+    }
 }
 
 /** 按钮行：整行搬过来，只改「Connect」「Additional Parameters」的字 */
@@ -719,7 +880,7 @@ function layoutButtons(slot) {
             }
             passUsed?.add(save);
             if (cfg().customLabels) {
-                patchAttr(save, 'class', `${save.className} menu_button_icon ttal-save-profile`.replace(/\s+/g, ' ').trim());
+                addCls(save, 'menu_button_icon', 'ttal-save-profile');
                 patchText(save, t('saveProfile'));
             }
         }
@@ -730,10 +891,7 @@ function layoutButtons(slot) {
         const extra = native('#customize_additional_parameters');
         if (extra) patchText(extra, t('additionalParams'));
     }
-    if (!connect.dataset.ttalHooked) {
-        connect.dataset.ttalHooked = '1';
-        connect.addEventListener('click', () => beginModelLoad(), true);
-    }
+    hook(connect, 'modelLoad', 'click', () => beginModelLoad());
 }
 
 /**
@@ -744,6 +902,20 @@ function layoutButtons(slot) {
 function hideTestButton() {
     if (!cfg().hideTestButton) return;
     for (const btn of document.querySelectorAll('#test_api_button, .test_api_button')) hideNode(btn);
+}
+
+/**
+ * API 下拉（#main_api）里只留「文本补全 / 聊天补全」，
+ * NovelAI / AI Horde / KoboldAI 隐藏起来（不删，teardown 时原样还原）。
+ */
+const HIDDEN_MAIN_APIS = ['novel', 'koboldhorde', 'kobold'];
+
+function slimApiList() {
+    const select = native('#main_api');
+    if (!select || !cfg().slimApiList) return;
+    for (const option of select.options) {
+        if (HIDDEN_MAIN_APIS.includes(option.value) && option.value !== select.value) hideNode(option);
+    }
 }
 
 /* ---------------------- 模型列表：加载成功后才显示 */
@@ -767,7 +939,10 @@ function updateModelListVisibility() {
     if (!slot || slot.children.length === 0) return;
     const select = modelListSelect();
     if (selectHasModels(select)) modelsLoaded.add(currentSource());
-    const shouldShow = !cfg().lazyModelList || modelsLoaded.has(currentSource());
+    // 只有另外还有「模型名」输入框的 source（custom、azure）才值得先藏起来：
+    // 别家的下拉框是唯一的模型入口，藏了就比原生少东西了。
+    const hasNameField = !!fieldsFor(currentSource()).modelName;
+    const shouldShow = !cfg().lazyModelList || !hasNameField || modelsLoaded.has(currentSource());
     slot.classList.toggle('ttal-hidden', !shouldShow);
 }
 
@@ -817,7 +992,18 @@ function apply() {
         teardown();
         return;
     }
-    if (!panelHost() || !isChatCompletion()) return;
+    if (!panelHost()) return;
+    // 主 API 不是 Chat Completion 时，客户端会把整个 #openai_api 藏起来。
+    // 「连接配置（API 预设）」原本挂在 #rm_api_block 顶部、对所有 API 都可见，
+    // 被我们搬进 #openai_api 后会跟着一起消失 —— 所以这时要完整还原，
+    // 等切回 Chat Completion 再重新装配（#main_api 的 change 已经监听了）。
+    if (!isChatCompletion()) {
+        if (ui.root && document.contains(ui.root)) {
+            dbg('主 API 不是 Chat Completion，先还原，避免连接配置被一起隐藏');
+            teardown();
+        }
+        return;
+    }
 
     applying = true;
     try {
@@ -831,12 +1017,14 @@ function apply() {
 
         layoutProfile(ui.slots.profile);
         layoutProfileName(ui.slots.profileName);
-        layoutNativeField(ui.slots.endpoint, fields.endpoint, t('endpoint'));
+        layoutNativeField(ui.slots.endpoint, fields.endpoint, fields.label.endpoint);
         layoutKey(ui.slots.key, fields);
-        layoutNativeField(ui.slots.modelName, fields.modelName, t('modelName'));
-        layoutNativeField(ui.slots.modelList, fields.modelList, t('modelList'));
+        layoutNativeField(ui.slots.modelName, fields.modelName, fields.label.modelName);
+        layoutNativeField(ui.slots.modelList, fields.modelList, fields.label.modelList);
+        layoutExtras(ui.slots.extras);
         layoutButtons(ui.slots.buttons);
         hideTestButton();
+        slimApiList();
 
         sweepSlots();
         passUsed = null;
@@ -862,6 +1050,7 @@ function teardown() {
         ui.eyeInput = null;
         ui.eyeRevealed = false;
         ui.nameInput?.remove();
+        unhookAll();
         releaseAll();
         unpatchAll();
         ui.root?.remove();
@@ -944,6 +1133,8 @@ const SETTING_ITEMS = [
     ['slimProfileButtons', '连接配置只留新建/删除（保存挪到按钮行）', 'Slim down connection-profile buttons'],
     ['profileNameField', '显示「预设名称」输入框', 'Show the profile name field'],
     ['lazyModelList', '模型列表加载后再显示', 'Reveal model list only after loading'],
+    ['adoptExtras', '各家额外字段也收进面板', 'Adopt per-source extra fields'],
+    ['slimApiList', 'API 只留文本补全 / 聊天补全', 'Keep only Text / Chat Completion in the API list'],
     ['debug', '调试日志', 'Debug logging'],
 ];
 

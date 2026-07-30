@@ -154,9 +154,20 @@ apiPanelLayout.cfg()       // 当前设置
 - 「预设名称」有内容时点「新建」，命名弹窗的输入框被自动填好
 - `teardown()` 后：预设名称框和眼睛都摘掉、保存按钮回到预设行、详情按钮恢复可见，`#rm_api_block` 逐字符一致
 - 尺寸实测：API / Chat Completion Source / 预设 / 预设名称 / 端点 / 密钥 / 模型名 / 模型列表 /
-  Prompt Post-Processing 全部 34px 等高等宽；新建、删除、小眼睛都是 34×34 正方形；按钮行 28px
+  Prompt Post-Processing 全部 34px 等高等宽；新建、删除、小眼睛都是 34×34 正方形；按钮行 30px
 - 间距实测：整块面板从上到下只有 4 / 12 两种间隙，按钮行上下 16
 - 左边缘实测：端点框、标签、加载模型、状态圆点、勾选框 left 完全相同
 - 关掉插件后：`.ttal-panel` 移除，控件回到原生 24~25px、间距回到原生 10px，`#rm_api_block` 逐字符一致
+
+v2.5.0 另外修掉两个真问题，都在预览页上验过：
+
+- **主 API 切到 Text Completion 时不再丢「当前API预设」**。客户端切走 Chat Completion 时会把整个
+  `#openai_api` 藏起来，而连接配置原本挂在 `#rm_api_block` 顶部、对所有 API 都可见 ——
+  被搬进去就跟着一起消失了。现在这种情况下插件自动**完整还原**，预设块回到原位第一格照常可用，
+  切回 Chat Completion 再自动重新装配（实测：切走后 `#rm_api_block` 与加载前逐字符一致，切回后重新装配）。
+- **不再往原生节点上留任何痕迹**。原先「保存预设」的 class 每次 `apply()` 都会重复追加一遍
+  （越跑越长），另外两处 `data-ttal-*` 标记属性 `teardown()` 时没清掉、加的监听也没解绑。
+  现在补 class 是幂等的，监听走可解绑的登记表（实测：开→关 5 轮，每轮 `teardown()` 后
+  `#rm_api_block` 都与加载前**逐字符一致**，残留 `data-ttal-*` 为 0；连续 `apply()` 3 次装配态不变）。
 
 未在真机 TauriTavern 上跑过。
