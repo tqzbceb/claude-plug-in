@@ -17,6 +17,51 @@
     --ttal-label-gap: 4px; /* 标签与它自己的控件之间 */
 }
 
+/* 紧凑行距：手机上 12px 的组间距显得太散，收到 8px；标签间距 4 → 3。
+   高度一个字不动 —— 手机上按钮和输入框本来就不能再矮了。 */
+.ttal-panel.ttal-compact {
+    --ttal-row-gap: 8px;
+    --ttal-label-gap: 3px;
+}
+
+/* 窄屏自动收紧。1000px 是 TauriTavern 自己的手机断点，跟着它走。 */
+@media screen and (max-width: 1000px) {
+    .ttal-panel.ttal-auto-compact {
+        --ttal-row-gap: 8px;
+        --ttal-label-gap: 3px;
+    }
+    /* 按钮行上下的额外气口也跟着减半 */
+    .ttal-panel.ttal-auto-compact #ttal_root .ttal-slot-buttons {
+        margin: 2px 0;
+    }
+}
+
+.ttal-panel.ttal-compact #ttal_root .ttal-slot-buttons {
+    margin: 2px 0;
+}
+
+/* 字段右边缘对齐：密钥行右边有小眼睛、预设行右边有两颗按钮，
+   其余几行不留位就会比它们宽出一截，右边缘一层比一层长，看着就"宽"。
+   这里给没有尾随按钮的行也留出一个按钮位，右边缘对齐到密钥框。 */
+#ttal_root.ttal-align .ttal-slot-profileName,
+#ttal_root.ttal-align .ttal-slot-endpoint,
+#ttal_root.ttal-align .ttal-slot-modelName,
+#ttal_root.ttal-align .ttal-slot-modelList {
+    padding-right: calc(var(--ttal-field-h) + 5px);
+    box-sizing: border-box;
+}
+
+/* 面板里我们没搬的那几个原生下拉（API / Chat Completion Source / Prompt Post-Processing）
+   也收到同一条右边缘上，不然它们会比我们的字段长出一个按钮位。只在接管态生效。 */
+.ttal-panel.ttal-managed.ttal-align select:not([multiple]):not([size]) {
+    width: calc(100% - var(--ttal-field-h) - 5px);
+}
+
+/* 我们自己那几行的留位是靠槽位的 padding 给的，里面的下拉照旧撑满 */
+#ttal_root.ttal-align select:not([multiple]):not([size]) {
+    width: 100%;
+}
+
 /* ---- 0. 统一节奏：标签离上一组 12px、离自己的控件 4px ----
  * 原生这块是混着来的（有的标签贴着控件 0px，有的隔 10px，组间 5~13px 不等），
  * 看起来就"乱"。这里把外边距收归一处统一算。 */

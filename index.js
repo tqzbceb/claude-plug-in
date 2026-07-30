@@ -41,6 +41,9 @@ const DEFAULT_SETTINGS = {
     customOnly: true,        // 只接管四个「自定义」来源；其余来源 / 其余 API 类型只做美化，DOM 一个字不改
     lazyModelList: true,     // 模型列表默认隐藏，加载成功后显示（只对另有「模型名」输入框的 source 生效）
     adoptExtras: true,       // 各家自己的额外字段也收进面板（Azure 部署名、Vertex 区域…）
+    autoCompact: true,       // 窄屏（≤1000px，手机）自动收紧行距
+    forceCompact: false,     // 任何屏幕都用紧凑行距
+    alignFields: true,       // 字段右边缘对齐：没有尾随按钮的那几行也留出一个按钮位
     debug: false,
 };
 
@@ -677,6 +680,13 @@ function markPanel(on, takenOver = false) {
     // 接管状态单独标一个 class：有几条规则（比如「API」标签贴顶）只在我们自己
     // 重排出来的版式下才成立，原生版式下会把间距弄没。
     panel.classList.toggle('ttal-managed', !!on && !!takenOver);
+    // 行距：紧凑要么由用户强制，要么交给窄屏媒体查询（.ttal-auto-compact 只在 ≤1000px 生效）
+    panel.classList.toggle('ttal-compact', !!on && !!cfg().forceCompact);
+    panel.classList.toggle('ttal-auto-compact', !!on && !cfg().forceCompact && !!cfg().autoCompact);
+    // 字段右边缘对齐：panel 上这个 class 管面板里没被我们搬走的原生下拉，
+    // root 上那个管我们自己重排的那几行
+    panel.classList.toggle('ttal-align', !!on && !!cfg().alignFields);
+    ui.root?.classList.toggle('ttal-align', !!on && !!cfg().alignFields);
 }
 
 /** 根节点插到「Chat Completion Source」下拉框之后 */
@@ -1272,6 +1282,8 @@ function apply() {
     applying = true;
     try {
         const root = buildRoot();
+        // 字段右边缘对齐：root 是这一轮才建出来的，markPanel 那会儿还没有它
+        root.classList.toggle('ttal-align', !!cfg().alignFields);
         if (!ensureMounted(root)) return;
 
         const fields = fieldsFor(currentSource());
@@ -1414,6 +1426,9 @@ const SETTING_ITEMS = [
     ['customOnly', '只接管四个「自定义」来源（其余只做美化）', 'Only take over the four Custom sources (others: styling only)'],
     ['lazyModelList', '模型列表加载后再显示', 'Reveal model list only after loading'],
     ['adoptExtras', '各家额外字段也收进面板', 'Adopt per-source extra fields'],
+    ['autoCompact', '窄屏（手机）自动收紧行距', 'Tighten spacing on narrow screens'],
+    ['forceCompact', '任何屏幕都用紧凑行距', 'Always use compact spacing'],
+    ['alignFields', '字段右边缘对齐（比原来窄一个按钮位）', 'Align field right edges (one button column narrower)'],
     ['debug', '调试日志', 'Debug logging'],
 ];
 
