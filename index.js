@@ -80,6 +80,7 @@ const LABELS = {
     additionalParams: ['附加参数', 'Additional Parameters'],
     profileName: ['预设名称', 'Profile Name'],
     profileNameHint: ['留空则用客户端默认名', 'Leave empty to use the default name'],
+    keyHint: ['sk-...', 'sk-...'],
     saveProfile: ['保存预设', 'Save Profile'],
     showKey: ['显示密钥明文', 'Show key'],
     hideKey: ['隐藏密钥', 'Hide key'],
@@ -683,6 +684,9 @@ function layoutKey(slot, fields) {
     }
     slot.classList.remove('ttal-hidden');
     adoptGroup(slot, input, t('key'));
+    // 空的密钥框给个占位提示，跟端点框一样有个小虚字。
+    // 客户端自己往 placeholder 里写东西时（比如提示密钥已保存）不覆盖它。
+    if (cfg().customLabels && !input.placeholder) patchAttr(input, 'placeholder', t('keyHint'));
     if (cfg().hideHints) {
         for (const btn of slot.querySelectorAll('.manage-api-keys')) hideNode(btn);
     }

@@ -12,7 +12,7 @@
 
 .ttal-panel {
     --ttal-field-h: calc(var(--mainFontSize, 15px) * 2.25);
-    --ttal-btn-h: calc(var(--mainFontSize, 15px) * 1.85);
+    --ttal-btn-h: calc(var(--mainFontSize, 15px) * 2);
     --ttal-row-gap: 12px;  /* 组与组之间 */
     --ttal-label-gap: 4px; /* 标签与它自己的控件之间 */
 }
@@ -196,7 +196,7 @@
 #ttal_root .ttal-slot-buttons .menu_button {
     height: var(--ttal-btn-h);
     min-height: var(--ttal-btn-h);
-    padding: 0 0.9em;
+    padding: 0 1.05em;
     margin: 0;
     display: flex;
     align-items: center;
