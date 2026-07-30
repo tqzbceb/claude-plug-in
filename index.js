@@ -884,6 +884,14 @@ function layoutExtras(slot) {
         if (home && home.dataset.ttalSlot !== 'extras' && rec.anchor) taken.push(rec.anchor);
     }
 
+    // 已经落在别的槽位里的节点不能再收：「附加参数」按钮自己带着 data-source="custom"，
+    // 但它是按钮行的一员（Connect / Cancel 的兄弟）。不挡住的话它会被整块搬到这里，
+    // 于是按钮排成两行：附加参数一行，加载模型 / 取消 / 保存预设一行。
+    const claimedElsewhere = (el) => {
+        const home = el?.closest?.('[data-ttal-slot]');
+        return !!home && home.dataset.ttalSlot !== 'extras';
+    };
+
     // 第一步：上一轮已经搬进来、老家还是当前 source 的节点，原位留着。
     // 少了这一步，第二次装配时原生容器已经空了，sweepSlots 会把它们全塞回去，
     // 于是「重排一次好使、再重排一次就散架」。
@@ -895,7 +903,7 @@ function layoutExtras(slot) {
     }
     // 第二步：还留在原生容器里的，按原生顺序补上
     for (const host of hosts) {
-        if (isSynthetic(host) || passUsed?.has(host)) continue;
+        if (isSynthetic(host) || passUsed?.has(host) || claimedElsewhere(host)) continue;
         // 整块搬：容器本身就是一个完整的原生组件时（「反向代理」是个 .inline-drawer，
         // 客户端靠 closest('.inline-drawer') + find('>.inline-drawer-content') 开合），
         // 拆开搬会让它点了展不开。只有确实被我们拆过的容器才逐个子节点搬。
@@ -904,7 +912,7 @@ function layoutExtras(slot) {
             continue;
         }
         for (const child of Array.from(host.children)) {
-            if (isSynthetic(child) || passUsed?.has(child)) continue;
+            if (isSynthetic(child) || passUsed?.has(child) || claimedElsewhere(child)) continue;
             adopt(slot, child);
         }
     }
@@ -1064,8 +1072,9 @@ function apply() {
         layoutKey(ui.slots.key, fields);
         layoutNativeField(ui.slots.modelName, fields.modelName, fields.label.modelName);
         layoutNativeField(ui.slots.modelList, fields.modelList, fields.label.modelList);
-        layoutExtras(ui.slots.extras);
+        // 顺序要紧：按钮行先进槽位，layoutExtras 才能看出「附加参数」已经有归属了
         layoutButtons(ui.slots.buttons);
+        layoutExtras(ui.slots.extras);
         hideTestButton();
         // 「管理 API 密钥」小钥匙：Vertex AI 的 Express 模式还有第二个密钥框，
         // 那颗小钥匙落在「其它」槽位里，所以在整块面板范围内统一清一遍。
