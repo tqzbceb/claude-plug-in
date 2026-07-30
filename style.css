@@ -60,9 +60,37 @@
     max-width: 100%;
 }
 
-/* ---- 密钥框右边的小眼睛 ---- */
+/* ---- 密钥框右边的小眼睛：高度跟输入框对齐，方形 ---- */
+
+#ttal_root .ttal-slot-key > .flex-container {
+    align-items: stretch;
+    gap: 5px;
+}
 
 #ttal_root .ttal-eye {
     flex: 0 0 auto;
-    align-self: center;
+    align-self: stretch;      /* 上下 margin 由 JS 抄输入框，所以拉伸后正好等高 */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    height: auto;
+    min-width: 2.05em;        /* 和原生那颗「管理密钥」小钥匙一样宽 */
+    padding: 0 4px;
+    line-height: 1;
+}
+
+/* ---- 预设名称输入框 ---- */
+
+#ttal_root .ttal-profile-name {
+    width: 100%;
+    max-width: 100%;
+}
+
+/* ---- 「保存预设」按钮（原生 #update_connection_profile 挪过来的） ---- */
+
+#ttal_root .ttal-save-profile {
+    display: flex;
+    align-items: center;
+    gap: 5px;
 }

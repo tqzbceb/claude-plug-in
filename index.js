@@ -36,12 +36,14 @@ const DEFAULT_SETTINGS = {
     hideHints: true,         // 隐藏新手提示与「管理 API 密钥」按钮
     hideTestButton: true,    // 隐藏「发送测试信号」按钮（会真的花钱，用户明确不要）
     keyReveal: true,         // 密钥框右边加「小眼睛」，点一下看明文
+    slimProfileButtons: true,// 连接配置那排只留「新建」「删除」，「保存」挪到按钮行
+    profileNameField: true,  // 加一个「预设名称」输入框，新建时自动填进命名弹窗
     lazyModelList: true,     // 模型列表默认隐藏，加载成功后显示
     debug: false,
 };
 
 /** 折叠区内部的槽位顺序（自上而下） */
-const EDITOR_SLOTS = ['endpoint', 'key', 'modelName', 'modelList', 'buttons'];
+const EDITOR_SLOTS = ['profileName', 'endpoint', 'key', 'modelName', 'modelList', 'buttons'];
 
 /** 各 chat completion source 的字段选择器；未列出的走通用推导规则 */
 const SOURCE_FIELDS = {
@@ -76,6 +78,9 @@ const LABELS = {
     modelList: ['模型列表', 'Model List'],
     loadModels: ['加载模型', 'Load Models'],
     additionalParams: ['附加参数', 'Additional Parameters'],
+    profileName: ['预设名称', 'Profile Name'],
+    profileNameHint: ['留空则用客户端默认名', 'Leave empty to use the default name'],
+    saveProfile: ['保存预设', 'Save Profile'],
     showKey: ['显示密钥明文', 'Show key'],
     hideKey: ['隐藏密钥', 'Hide key'],
 };
@@ -509,6 +514,79 @@ function layoutProfile(slot) {
         const heading = block.querySelector('h3 span[data-i18n], h3 span');
         if (heading) patchText(heading, t('profile'));
     }
+    // 那排图标是原生「连接配置」的功能，一个都不删，只把用不上的隐藏掉。
+    // 「保存」（#update_connection_profile）会被 layoutButtons 挪到按钮行去。
+    if (cfg().slimProfileButtons) {
+        for (const id of PROFILE_EXTRA_BUTTONS) hideNode(native(`#${id}`));
+    }
+}
+
+/** 连接配置那排里，日常用不上的按钮：详情 / 改名 / 重载 */
+const PROFILE_EXTRA_BUTTONS = [
+    'view_connection_profile',
+    'edit_connection_profile',
+    'reload_connection_profile',
+];
+
+/* ---------------- 预设名称：自己加的输入框，喂给原生命名弹窗 ---------------- */
+
+function profileNameInput() {
+    if (ui.nameInput) return ui.nameInput;
+    const input = markSynthetic(document.createElement('input'));
+    input.id = 'ttal_profile_name';
+    input.type = 'text';
+    input.className = 'text_pole wide100p ttal-profile-name';
+    input.autocomplete = 'off';
+    input.placeholder = t('profileNameHint');
+    ui.nameInput = input;
+    return input;
+}
+
+/**
+ * 原生「新建 / 改名」都是弹一个 INPUT 弹窗、里面预填一个建议名字。
+ * 这里在点击后把我们输入框里的名字塞进那个弹窗，省得每次手打。
+ * 找不到弹窗就什么都不做 —— 原生流程照旧。
+ */
+function feedNameToPopup() {
+    const wanted = ui.nameInput?.value?.trim();
+    if (!wanted) return;
+    const deadline = Date.now() + 2000;
+    const tick = () => {
+        const dialogs = Array.from(document.querySelectorAll('dialog.popup[open], dialog[open] .popup-body, .popup:not(.ttal-hidden)'));
+        for (const scope of dialogs.reverse()) {
+            const field = scope.querySelector('textarea.popup-input, input.popup-input, .popup-input, textarea.text_pole, input.text_pole');
+            if (field) {
+                field.value = wanted;
+                field.dispatchEvent(new Event('input', { bubbles: true }));
+                field.dispatchEvent(new Event('change', { bubbles: true }));
+                field.focus?.();
+                field.select?.();
+                dbg('profile name fed to popup:', wanted);
+                return;
+            }
+        }
+        if (Date.now() < deadline) setTimeout(tick, 60);
+        else dbg('命名弹窗没找到，跳过预填');
+    };
+    setTimeout(tick, 60);
+}
+
+function layoutProfileName(slot) {
+    if (!cfg().profileNameField) {
+        slot.classList.add('ttal-hidden');
+        return;
+    }
+    slot.classList.remove('ttal-hidden');
+    adopt(slot, cachedLabel(slot, t('profileName')));
+    adopt(slot, profileNameInput());
+
+    for (const id of ['create_connection_profile', 'edit_connection_profile', 'update_connection_profile']) {
+        const btn = native(`#${id}`);
+        if (btn && !btn.dataset.ttalNameHook) {
+            btn.dataset.ttalNameHook = '1';
+            btn.addEventListener('click', () => feedNameToPopup(), true);
+        }
+    }
 }
 
 /** 端点 / 模型名 / 模型列表：把原生字段组搬过来 */
@@ -545,7 +623,7 @@ function setEyeState(reveal) {
 function keyEye() {
     if (ui.eye) return ui.eye;
     const eye = markSynthetic(document.createElement('div'));
-    eye.className = 'menu_button menu_button_icon fa-solid fa-eye ttal-eye';
+    eye.className = 'menu_button fa-solid fa-eye fa-fw ttal-eye';
     eye.title = t('showKey');
     eye.addEventListener('click', () => {
         const input = ui.eyeInput;
@@ -562,6 +640,16 @@ function keyEye() {
     return eye;
 }
 
+/**
+ * 让眼睛和密钥框严格等高：抄输入框的上下 margin，再让自己在行内拉伸。
+ * 这样不管主题把 .text_pole 调多高，眼睛都跟着走，不会一块高一块矮。
+ */
+function alignEyeToInput(input, eye) {
+    const cs = getComputedStyle(input);
+    if (eye.style.marginTop !== cs.marginTop) eye.style.marginTop = cs.marginTop;
+    if (eye.style.marginBottom !== cs.marginBottom) eye.style.marginBottom = cs.marginBottom;
+}
+
 /** 把小眼睛放到密钥输入框右边（同一行内，不占独立一行） */
 function mountKeyEye(input) {
     if (!cfg().keyReveal) {
@@ -575,6 +663,7 @@ function mountKeyEye(input) {
     ui.eyeInput = input;
     if (input.nextElementSibling !== eye) input.after(eye);
     passUsed?.add(eye); // 万一它成了槽位的直接子节点，别被 sweepSlots 当残留清掉
+    alignEyeToInput(input, eye);
     if (switched) {
         // 换了 source：新框一律先遮上，图标复位
         maskKey(input);
@@ -610,6 +699,26 @@ function layoutButtons(slot) {
     const row = connect.parentElement;
     if (row && row !== slot && !row.id) adopt(slot, row);
     else adopt(slot, connect);
+
+    // 「保存预设」= 原生 #update_connection_profile，从连接配置那排挪到这里，
+    // 位置在「加载模型」和「附加参数」之间。逻辑还是原生的。
+    if (cfg().slimProfileButtons) {
+        const save = native('#update_connection_profile');
+        const buttonRow = connect.parentElement;
+        if (save && buttonRow) {
+            const extra = native('#customize_additional_parameters');
+            const seat = extra && extra.parentElement === buttonRow ? extra : null;
+            if (save.parentElement !== buttonRow || (seat && save.nextElementSibling !== seat)) {
+                track(save);
+                buttonRow.insertBefore(save, seat);
+            }
+            passUsed?.add(save);
+            if (cfg().customLabels) {
+                patchAttr(save, 'class', `${save.className} menu_button_icon ttal-save-profile`.replace(/\s+/g, ' ').trim());
+                patchText(save, t('saveProfile'));
+            }
+        }
+    }
 
     if (cfg().customLabels) {
         patchText(connect, t('loadModels'));
@@ -715,6 +824,7 @@ function apply() {
         slotCursor.clear();
 
         layoutProfile(ui.slots.profile);
+        layoutProfileName(ui.slots.profileName);
         layoutNativeField(ui.slots.endpoint, fields.endpoint, t('endpoint'));
         layoutKey(ui.slots.key, fields);
         layoutNativeField(ui.slots.modelName, fields.modelName, t('modelName'));
@@ -744,6 +854,7 @@ function teardown() {
         ui.eye?.remove();
         ui.eyeInput = null;
         ui.eyeRevealed = false;
+        ui.nameInput?.remove();
         releaseAll();
         unpatchAll();
         ui.root?.remove();
@@ -823,6 +934,8 @@ const SETTING_ITEMS = [
     ['hideHints', '隐藏新手提示与管理密钥按钮', 'Hide hints and the manage-keys button'],
     ['hideTestButton', '隐藏「发送测试信号」按钮', 'Hide the Test Message button'],
     ['keyReveal', '密钥框加「小眼睛」查看明文', 'Add an eye button to reveal the key'],
+    ['slimProfileButtons', '连接配置只留新建/删除（保存挪到按钮行）', 'Slim down connection-profile buttons'],
+    ['profileNameField', '显示「预设名称」输入框', 'Show the profile name field'],
     ['lazyModelList', '模型列表加载后再显示', 'Reveal model list only after loading'],
     ['debug', '调试日志', 'Debug logging'],
 ];
@@ -857,7 +970,8 @@ function buildSettingsUI() {
             saveCfg();
             if (key === 'enabled' && !box.checked) {
                 teardown();
-            } else if (key === 'customLabels' || key === 'hideHints' || key === 'hideTestButton' || key === 'keyReveal') {
+            } else if (key === 'customLabels' || key === 'hideHints' || key === 'hideTestButton' || key === 'keyReveal'
+                || key === 'slimProfileButtons' || key === 'profileNameField') {
                 // 这两项改写了原生节点，先回滚再重排
                 teardown();
                 setTimeout(() => schedule(true), 80);
