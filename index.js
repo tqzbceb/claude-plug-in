@@ -34,6 +34,7 @@ const DEFAULT_SETTINGS = {
     editorOpen: false,       // 折叠区当前是否展开（记住上次状态）
     customLabels: true,      // 用中文新标签替换原生标签
     hideHints: true,         // 隐藏新手提示与「管理 API 密钥」按钮
+    hideTestButton: true,    // 隐藏「发送测试信号」按钮（会真的花钱，用户明确不要）
     lazyModelList: true,     // 模型列表默认隐藏，加载成功后显示
     debug: false,
 };
@@ -555,6 +556,16 @@ function layoutButtons(slot) {
     }
 }
 
+/**
+ * 隐藏「发送测试信号」（#test_api_button）。
+ * 它被搬进折叠区后，原本靠 CSS 路径隐藏它的第三方插件会失配，所以这里自己隐藏。
+ * 走 hideNode → patchAttr，teardown() 时原样还原。
+ */
+function hideTestButton() {
+    if (!cfg().hideTestButton) return;
+    for (const btn of document.querySelectorAll('#test_api_button, .test_api_button')) hideNode(btn);
+}
+
 /* ---------------------- 模型列表：加载成功后才显示 */
 
 /** 已成功加载过模型的 source 集合 */
@@ -643,6 +654,7 @@ function apply() {
         layoutNativeField(ui.slots.modelName, fields.modelName, t('modelName'));
         layoutNativeField(ui.slots.modelList, fields.modelList, t('modelList'));
         layoutButtons(ui.slots.buttons);
+        hideTestButton();
 
         sweepSlots();
         passUsed = null;
@@ -740,6 +752,7 @@ const SETTING_ITEMS = [
     ['collapseEditor', '把端点/密钥/模型折叠起来', 'Collapse endpoint/key/model fields'],
     ['customLabels', '使用中文标签', 'Use custom labels'],
     ['hideHints', '隐藏新手提示与管理密钥按钮', 'Hide hints and the manage-keys button'],
+    ['hideTestButton', '隐藏「发送测试信号」按钮', 'Hide the Test Message button'],
     ['lazyModelList', '模型列表加载后再显示', 'Reveal model list only after loading'],
     ['debug', '调试日志', 'Debug logging'],
 ];
@@ -774,7 +787,7 @@ function buildSettingsUI() {
             saveCfg();
             if (key === 'enabled' && !box.checked) {
                 teardown();
-            } else if (key === 'customLabels' || key === 'hideHints') {
+            } else if (key === 'customLabels' || key === 'hideHints' || key === 'hideTestButton') {
                 // 这两项改写了原生节点，先回滚再重排
                 teardown();
                 setTimeout(() => schedule(true), 80);
