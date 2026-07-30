@@ -94,3 +94,48 @@
     align-items: center;
     gap: 5px;
 }
+
+/* ---------------------------------------------------------------
+ * 手机友好：面板内的输入框统一加高一档，按钮跟着变大；
+ * 按钮仍比输入框矮一点，但不再是扁条。
+ * 高度用 --mainFontSize 算，跟着主题字号缩放；写成固定高度是因为客户端
+ * 给某些输入框单独调了 font-size，用 em 会一格 33 一格 31 不齐。
+ * 只在 #ttal_root 内生效，不动客户端别处的样式。
+ * --------------------------------------------------------------- */
+
+#ttal_root {
+    --ttal-field-h: calc(var(--mainFontSize, 15px) * 2.25);
+    --ttal-btn-h: calc(var(--mainFontSize, 15px) * 1.85);
+}
+
+#ttal_root input.text_pole,
+#ttal_root select.text_pole {
+    height: var(--ttal-field-h);
+    min-height: var(--ttal-field-h);
+    padding-top: 0;
+    padding-bottom: 0;
+    box-sizing: border-box;
+}
+
+/* 按钮行：比输入框矮一点，但有正常的点击面积 */
+#ttal_root .ttal-slot-buttons .menu_button {
+    height: var(--ttal-btn-h);
+    min-height: var(--ttal-btn-h);
+    padding: 0 0.8em;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+}
+
+/* 预设那排的图标按钮（新建 / 删除）与下拉框等高，手机上好按 */
+#ttal_root .ttal-slot-profile .flex-container > .menu_button {
+    align-self: stretch;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: auto;
+    min-width: 2.6em;
+    padding: 0 0.4em;
+    box-sizing: border-box;
+}
