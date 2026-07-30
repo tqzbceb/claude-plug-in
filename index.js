@@ -38,6 +38,7 @@ const DEFAULT_SETTINGS = {
     keyReveal: true,         // 密钥框右边加「小眼睛」，点一下看明文
     slimProfileButtons: true,// 连接配置那排只留「新建」「删除」，「保存」挪到按钮行
     profileNameField: true,  // 加一个「预设名称」输入框，新建时自动填进命名弹窗
+    profileCustomOnly: true, // 只有四个「自定义」来源保留 API 预设，其余来源只做美化
     lazyModelList: true,     // 模型列表默认隐藏，加载成功后显示（只对另有「模型名」输入框的 source 生效）
     adoptExtras: true,       // 各家自己的额外字段也收进面板（Azure 部署名、Vertex 区域…）
     slimApiList: true,       // API 下拉只留「文本补全 / 聊天补全」
@@ -277,6 +278,11 @@ function hideNode(el) {
     addCls(el, 'ttal-hidden');
 }
 
+/** 撤销 hideNode（class 的原值早记在 patched 里，teardown 照样能逐字符还原） */
+function unhideNode(el) {
+    el?.classList.remove('ttal-hidden');
+}
+
 function unpatchAll() {
     for (const [el, rec] of patched) {
         try {
@@ -356,7 +362,12 @@ function groupInSlot(ctrl) {
         if (!label && kid.matches(HEADINGS)) label = kid;
         else leading.push(kid);
     }
-    return { label, body, leading, extras: kids.slice(index + 1) };
+    let innerLabel = null;
+    if (!label) {
+        const inner = body.firstElementChild;
+        if (inner && inner !== ctrl && inner.matches(HEADINGS) && !inner.contains(ctrl)) innerLabel = inner;
+    }
+    return { label, innerLabel, body, leading, extras: kids.slice(index + 1) };
 }
 
 function groupOf(ctrl) {
@@ -402,13 +413,23 @@ function groupOf(ctrl) {
         break;
     }
 
+    // 没有兄弟标签时，看看 body 里的第一个元素是不是它自带的标签 —— 别家的模型下拉框
+    // 就是这个结构：<div><h4>Claude Model</h4><select id="model_claude_select"></div>。
+    // 不认它的话，我们会在外面再造一个「模型列表」，同一个字段顶着两个标题。
+    // 只认、不搬：原地改字即可，DOM 结构一点不动。
+    let innerLabel = null;
+    if (!label) {
+        const inner = body.firstElementChild;
+        if (inner && inner !== ctrl && inner.matches(HEADINGS) && !inner.contains(ctrl)) innerLabel = inner;
+    }
+
     const extras = [];
     let next = body.nextElementSibling;
     while (next && isNoteNode(next) && !next.matches(HEADINGS)) {
         extras.push(next);
         next = next.nextElementSibling;
     }
-    return { label, body, leading, extras };
+    return { label, innerLabel, body, leading, extras };
 }
 
 /* ------------------------------------------------------- 合成控件构造 */
@@ -462,6 +483,9 @@ function adoptGroup(slot, ctrl, labelText) {
     if (group.label) {
         adopt(slot, group.label);
         if (labelText && cfg().customLabels) patchText(group.label, labelText);
+    } else if (group.innerLabel) {
+        // 自带标签在 body 里面，原地改字就行
+        if (labelText && cfg().customLabels) patchText(group.innerLabel, labelText);
     } else if (labelText) {
         adopt(slot, cachedLabel(slot, labelText));
     }
@@ -564,6 +588,21 @@ function currentSource() {
     return SOURCE_ALIASES[raw] || raw;
 }
 
+/**
+ * 只有四个「自定义」来源（Custom OpenAI-compatible / OpenAI Responses /
+ * Claude Messages / Gemini Interactions）能填自己的端点，也就是能接中转站，
+ * 所以才需要存多个 API。别家的端点是写死的，存多份没有意义。
+ * 三个变体已被 SOURCE_ALIASES 归一到 custom，所以一句话就能判。
+ */
+function isCustomSource() {
+    return currentSource() === 'custom';
+}
+
+/** 这个来源要不要「当前API预设 / 预设名称 / 保存预设」 */
+function profileEnabled() {
+    return !cfg().profileCustomOnly || isCustomSource();
+}
+
 function isChatCompletion() {
     const main = native('#main_api')?.value;
     return !main || main === 'openai';
@@ -637,6 +676,17 @@ function layoutProfile(slot) {
         dbg('connection profile block not found — 连接管理器未加载？');
         return;
     }
+    if (!profileEnabled()) {
+        // 这家的端点是写死的，存多个 API 没意义 —— 整块「连接配置」放回原位再隐藏，
+        // 面板只保留统一尺寸与排版的美化部分。
+        slot.classList.add('ttal-hidden');
+        restoreNode(native('#update_connection_profile'));
+        restoreNode(block);
+        hideNode(block);
+        dbg('非自定义来源，隐藏 API 预设：', rawSource());
+        return;
+    }
+    unhideNode(block);
     slot.classList.remove('ttal-hidden');
     adopt(slot, block);
     if (cfg().customLabels) {
@@ -701,7 +751,7 @@ function feedNameToPopup() {
 }
 
 function layoutProfileName(slot) {
-    if (!cfg().profileNameField) {
+    if (!cfg().profileNameField || !profileEnabled()) {
         slot.classList.add('ttal-hidden');
         return;
     }
@@ -836,17 +886,34 @@ function layoutExtras(slot) {
     }
     slot.classList.remove('ttal-hidden');
     const hosts = new Set(sourceHosts(currentSource()));
+    // 已经被分到专用槽位（端点 / 密钥 / 模型）的字段，在原位留了注释锚点。
+    // 谁家的容器里有这种锚点，说明这个容器是被我们拆开分配的（比如 custom 的 #custom_form），
+    // 那就继续按子节点搬；反之整块搬。
+    const taken = [];
+    for (const [el, rec] of moved) {
+        const home = el.closest?.('[data-ttal-slot]');
+        if (home && home.dataset.ttalSlot !== 'extras' && rec.anchor) taken.push(rec.anchor);
+    }
 
     // 第一步：上一轮已经搬进来、老家还是当前 source 的节点，原位留着。
     // 少了这一步，第二次装配时原生容器已经空了，sweepSlots 会把它们全塞回去，
     // 于是「重排一次好使、再重排一次就散架」。
     for (const child of Array.from(slot.children)) {
         if (isSynthetic(child)) continue;
+        if (hosts.has(child)) { adopt(slot, child); continue; }   // 上一轮整块搬进来的容器
         const home = moved.get(child)?.anchor?.parentNode;
         if (home && hosts.has(home)) adopt(slot, child);
     }
     // 第二步：还留在原生容器里的，按原生顺序补上
     for (const host of hosts) {
+        if (isSynthetic(host) || passUsed?.has(host)) continue;
+        // 整块搬：容器本身就是一个完整的原生组件时（「反向代理」是个 .inline-drawer，
+        // 客户端靠 closest('.inline-drawer') + find('>.inline-drawer-content') 开合），
+        // 拆开搬会让它点了展不开。只有确实被我们拆过的容器才逐个子节点搬。
+        if (!taken.some(anchor => host.contains(anchor))) {
+            adopt(slot, host);
+            continue;
+        }
         for (const child of Array.from(host.children)) {
             if (isSynthetic(child) || passUsed?.has(child)) continue;
             adopt(slot, child);
@@ -868,7 +935,7 @@ function layoutButtons(slot) {
 
     // 「保存预设」= 原生 #update_connection_profile，从连接配置那排挪到这里，
     // 位置在「加载模型」和「附加参数」之间。逻辑还是原生的。
-    if (cfg().slimProfileButtons) {
+    if (cfg().slimProfileButtons && profileEnabled()) {
         const save = native('#update_connection_profile');
         const buttonRow = connect.parentElement;
         if (save && buttonRow) {
@@ -1025,6 +1092,11 @@ function apply() {
         layoutButtons(ui.slots.buttons);
         hideTestButton();
         slimApiList();
+        // 「管理 API 密钥」小钥匙：Vertex AI 的 Express 模式还有第二个密钥框，
+        // 那颗小钥匙落在「其它」槽位里，所以在整块面板范围内统一清一遍。
+        if (cfg().hideHints) {
+            for (const btn of root.querySelectorAll('.manage-api-keys')) hideNode(btn);
+        }
 
         sweepSlots();
         passUsed = null;
@@ -1132,6 +1204,7 @@ const SETTING_ITEMS = [
     ['keyReveal', '密钥框加「小眼睛」查看明文', 'Add an eye button to reveal the key'],
     ['slimProfileButtons', '连接配置只留新建/删除（保存挪到按钮行）', 'Slim down connection-profile buttons'],
     ['profileNameField', '显示「预设名称」输入框', 'Show the profile name field'],
+    ['profileCustomOnly', 'API 预设只给四个「自定义」来源', 'API presets only for the four Custom sources'],
     ['lazyModelList', '模型列表加载后再显示', 'Reveal model list only after loading'],
     ['adoptExtras', '各家额外字段也收进面板', 'Adopt per-source extra fields'],
     ['slimApiList', 'API 只留文本补全 / 聊天补全', 'Keep only Text / Chat Completion in the API list'],
@@ -1169,7 +1242,7 @@ function buildSettingsUI() {
             if (key === 'enabled' && !box.checked) {
                 teardown();
             } else if (key === 'customLabels' || key === 'hideHints' || key === 'hideTestButton' || key === 'keyReveal'
-                || key === 'slimProfileButtons' || key === 'profileNameField') {
+                || key === 'slimProfileButtons' || key === 'profileNameField' || key === 'profileCustomOnly') {
                 // 这两项改写了原生节点，先回滚再重排
                 teardown();
                 setTimeout(() => schedule(true), 80);

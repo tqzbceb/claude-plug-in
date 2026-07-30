@@ -63,9 +63,9 @@
 
 /* ---- 下拉框右边给个小箭头，提示这里能点开 ---- */
 
-.ttal-panel select.text_pole,
-.ttal-panel select#main_api,
-.ttal-panel select#chat_completion_source {
+/* 别家的模型下拉框是裸 <select>（没有 text_pole），一并算进来 */
+.ttal-panel select:not([multiple]):not([size]),
+.ttal-panel select.text_pole {
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.6 6 6.4 11 1.6' fill='none' stroke='%239aa0a6' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
     background-position: right 9px center;
@@ -75,11 +75,14 @@
 
 /* ---- 1. 面板里所有单行输入框 / 下拉框：等高、等宽 ---- */
 
+/* 单行控件一律等高等宽：input.text_pole 之外，还有别家的裸 <select>（模型列表、
+   Z.AI 端点…）和裸 <input>。多选框 / 带 size 的列表框（OpenRouter 的服务商、
+   量化）本来就是多行的，排除掉。 */
 .ttal-panel input.text_pole,
-.ttal-panel select.text_pole,
-.ttal-panel select#main_api,
-.ttal-panel select#chat_completion_source,
-.ttal-panel #prompt_post_processing_form select {
+.ttal-panel input[type="text"],
+.ttal-panel input[type="password"],
+.ttal-panel input[type="number"],
+.ttal-panel select:not([multiple]):not([size]) {
     height: var(--ttal-field-h);
     min-height: var(--ttal-field-h);
     padding-top: 0;
@@ -190,6 +193,28 @@
     box-sizing: border-box;
     line-height: 1;
     aspect-ratio: 1 / 1;
+}
+
+/* 有的原生分组是列向 flex 但不拉伸子项（Vertex AI 的认证块），里面那一行
+   就只按内容宽度缩成一小截。面板里的分组一律拉满整宽。 */
+#ttal_root .ttal-slot .flex-container.flexFlowColumn {
+    align-items: stretch;
+    width: 100%;
+}
+
+/* 各家自己的按钮（Vertex 的「验证 JSON」…）跟按钮行同一档高度，
+   免得一处 25px 一处 30px */
+#ttal_root .ttal-slot-extras .menu_button {
+    height: var(--ttal-btn-h);
+    min-height: var(--ttal-btn-h);
+    padding: 0 1.05em;
+    margin: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    line-height: 1;
+    align-self: flex-start;
 }
 
 /* ---- 4. 按钮行：比输入框矮一档，但点击面积够大 ---- */
