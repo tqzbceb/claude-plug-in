@@ -44,6 +44,7 @@ const DEFAULT_SETTINGS = {
     autoCompact: true,       // 窄屏（≤1000px，手机）自动收紧行距
     forceCompact: false,     // 任何屏幕都用紧凑行距
     alignFields: true,       // 字段右边缘对齐：没有尾随按钮的那几行也留出一个按钮位
+    guardKeyHint: true,      // 不让客户端把已存的密钥写进密钥框的提示文字（placeholder 不受遮罩影响）
     debug: false,
 };
 
@@ -98,6 +99,7 @@ const LABELS = {
     profileName: ['预设名称', 'Profile Name'],
     profileNameHint: ['留空则用客户端默认名', 'Leave empty to use the default name'],
     keyHint: ['sk-...', 'sk-...'],
+    keySaved: ['密钥已保存', 'Key saved'],
     saveProfile: ['保存预设', 'Save Profile'],
     showKey: ['显示密钥明文', 'Show key'],
     hideKey: ['隐藏密钥', 'Hide key'],
@@ -1019,6 +1021,47 @@ async function revealToggle() {
     setEyeState(true);
 }
 
+/**
+ * 拦住客户端往密钥框 placeholder 里写密钥。
+ *
+ * 客户端每次存完密钥（拉模型时顺手存的那一次也算）都会跑 updateSecretDisplay()：
+ *   placeholder = `Key saved (${label})`，而 label 缺省时**回退成密钥本身**
+ *   （secrets.js getActiveSecretLabel: `activeSecret.label || activeSecret.value`）。
+ * placeholder 不受 type="password" 遮罩，所以密钥就这么明文露出来一次。
+ *
+ * 这里盯住 placeholder 属性，客户端一改就换回中性文案。
+ * 改写走 patchAttr，teardown() 时还原成客户端最后写的那个值。
+ */
+function neutralHint() {
+    return ui.keyStored ? t('keySaved') : t('keyHint');
+}
+
+function guardKeyHint(input) {
+    if (!input || !cfg().guardKeyHint) {
+        ui.hintObs?.disconnect();
+        ui.hintObs = null;
+        return;
+    }
+    const mine = (v) => v === t('keyHint') || v === t('keySaved');
+    const enforce = () => {
+        const now = input.getAttribute('placeholder');
+        if (mine(now)) return;
+        // 客户端写的原文里带 Key saved / 已保存 字样，说明密钥已经在客户端里了
+        if (now && /saved|已保存/i.test(now)) ui.keyStored = true;
+        // 卸载时要还原成客户端最后写的那个提示（而不是插件装上之前的老值），
+        // 所以把它塞进还原记录里 —— patchAttr 只在记录还空着时才写，不会覆盖它。
+        patchRecord(input)['placeholder@'] = now;
+        patchAttr(input, 'placeholder', neutralHint());
+    };
+    enforce();
+    if (ui.hintObs?.ttalTarget === input) return;
+    ui.hintObs?.disconnect();
+    const obs = new MutationObserver(() => enforce());
+    obs.observe(input, { attributes: true, attributeFilter: ['placeholder'] });
+    obs.ttalTarget = input;
+    ui.hintObs = obs;
+}
+
 /** 把小眼睛放到密钥输入框右边（同一行内，不占独立一行） */
 function mountKeyEye(input) {
     if (!cfg().keyReveal) {
@@ -1030,7 +1073,10 @@ function mountKeyEye(input) {
     }
     const eye = keyEye();
     const switched = ui.eyeInput !== input;
-    if (switched) clearRevealedKey();            // 上一个来源里注入的明文别跟着跑
+    if (switched) {
+        clearRevealedKey();                      // 上一个来源里注入的明文别跟着跑
+        ui.keyStored = false;                    // 新来源「存过没存过」重新判断
+    }
     ui.eyeInput = input;
     if (input.nextElementSibling !== eye) input.after(eye);
     passUsed?.add(eye); // 万一它成了槽位的直接子节点，别被 sweepSlots 当残留清掉
@@ -1053,8 +1099,9 @@ function layoutKey(slot, fields) {
     slot.classList.remove('ttal-hidden');
     adoptGroup(slot, input, fields.label?.key || t('key'));
     // 空的密钥框给个占位提示，跟端点框一样有个小虚字。
-    // 客户端自己往 placeholder 里写东西时（比如提示密钥已保存）不覆盖它。
     if (cfg().customLabels && !input.placeholder) patchAttr(input, 'placeholder', t('keyHint'));
+    // 客户端会把已存的密钥写进这个 placeholder，盯住它
+    guardKeyHint(input);
     if (cfg().hideHints) {
         for (const btn of slot.querySelectorAll('.manage-api-keys')) hideNode(btn);
     }
@@ -1329,6 +1376,9 @@ function restoreNatives() {
         modelWatch = null;
 
         clearRevealedKey();
+        ui.hintObs?.disconnect();
+        ui.hintObs = null;
+        ui.keyStored = false;
         ui.eye?.remove();
         ui.eyeInput = null;
         ui.eyeRevealed = false;
@@ -1429,6 +1479,7 @@ const SETTING_ITEMS = [
     ['autoCompact', '窄屏（手机）自动收紧行距', 'Tighten spacing on narrow screens'],
     ['forceCompact', '任何屏幕都用紧凑行距', 'Always use compact spacing'],
     ['alignFields', '字段右边缘对齐（比原来窄一个按钮位）', 'Align field right edges (one button column narrower)'],
+    ['guardKeyHint', '不让密钥出现在密钥框的提示文字里', 'Keep the stored key out of the key field placeholder'],
     ['debug', '调试日志', 'Debug logging'],
 ];
 

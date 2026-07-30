@@ -114,6 +114,7 @@ https://github.com/tqzbceb/claude-plug-in
 | 窄屏（手机）自动收紧行距 | 默认开；≤1000px 时组间 8px、标签 3px |
 | 任何屏幕都用紧凑行距 | 默认关；桌面也想紧凑就勾上 |
 | 字段右边缘对齐（比原来窄一个按钮位） | 默认开；关掉则字段撑满整宽，右边缘呈锯齿 |
+| 不让密钥出现在密钥框的提示文字里 | 默认开；关掉则客户端会把已存密钥写进 placeholder |
 | 调试日志 | 打印找不到的选择器，排障用 |
 
 打开折叠时，展开状态会被记住。
@@ -245,6 +246,27 @@ v3.0.0 把边界收紧成一条规则：**插件只碰四个「自定义」来�
   Text Generation WebUI、TogetherAI、vLLM）：逐字符一致
 - 四个自定义来源：正常接管，连续 `apply()` 3 次装配态不变
 - 在上述状态之间乱切一通后关掉插件：`#rm_api_block` 与加载前逐字符一致，`.ttal-panel` 也摘除
+
+### v3.3.0 —— 拉模型时密钥不再明文闪一下
+
+每次点「加载模型」，客户端顺手把密钥存一遍，然后跑 `updateSecretDisplay()`：
+
+```js
+// secrets.js
+const label = getActiveSecretLabel(secret_key);           // → activeSecret.label || activeSecret.value
+$(input_selector).attr('placeholder', `${placeholder} (${label})`);
+```
+
+密钥条目没有标签时，`label` **回退成密钥本身**，于是密钥被写进密钥框的
+`placeholder`。placeholder 是不受 `type="password"` 遮罩的，所以插件把输入框遮成圆点也没用 ——
+密钥就那样明文摊在框里。
+
+新增开关 **不让密钥出现在密钥框的提示文字里**（默认开）：盯住 placeholder 属性，
+客户端一写就换成中性文案（存过密钥显示「密钥已保存」，没存过显示 `sk-...`）。
+卸载插件时还原成**客户端最后写的那个值**，不是插件装上之前的老值。
+
+只对被接管的四个自定义来源生效，别家来源照旧是原生行为。想看真正的密钥就点小眼睛
+（v3.1.0 那条，需要 Allow Keys Exposure）。
 
 ### v3.2.0 —— 手机上「偏宽 / 偏散」的两个旋钮
 
