@@ -13,7 +13,37 @@
 .ttal-panel {
     --ttal-field-h: calc(var(--mainFontSize, 15px) * 2.25);
     --ttal-btn-h: calc(var(--mainFontSize, 15px) * 1.85);
-    --ttal-row-gap: 9px;
+    --ttal-row-gap: 12px;  /* 组与组之间 */
+    --ttal-label-gap: 4px; /* 标签与它自己的控件之间 */
+}
+
+/* ---- 0. 统一节奏：标签离上一组 12px、离自己的控件 4px ----
+ * 原生这块是混着来的（有的标签贴着控件 0px，有的隔 10px，组间 5~13px 不等），
+ * 看起来就"乱"。这里把外边距收归一处统一算。 */
+
+.ttal-panel h3,
+.ttal-panel h4 {
+    margin: var(--ttal-row-gap) 0 var(--ttal-label-gap);
+}
+
+/* 原生这个外层容器自带 gap: 5px，会叠在标签的外边距上（12 + 5 = 17，
+   于是同样两组之间一处 12 一处 17）。间距统一由标签外边距一处决定。 */
+.ttal-panel > .flex-container.flexFlowColumn {
+    gap: 0;
+}
+
+.ttal-panel #title_api {
+    margin-top: 0;
+}
+
+.ttal-panel input.text_pole,
+.ttal-panel select,
+.ttal-panel select.text_pole {
+    margin: 0;
+}
+
+.ttal-panel .online_status {
+    margin-top: var(--ttal-row-gap);
 }
 
 /* ---- 1. 面板里所有单行输入框 / 下拉框：等高、等宽 ---- */
@@ -38,13 +68,16 @@
     display: flex;
     flex-direction: column;
     gap: var(--ttal-row-gap);
+    /* 上一组（Chat Completion Source）到我们第一行标签的距离，
+       跟别处的组间距一致；我们的标签外边距是清零的，所以加在根节点上 */
+    margin-top: var(--ttal-row-gap);
     width: 100%;
 }
 
 #ttal_root .ttal-slot {
     display: flex;
     flex-direction: column;
-    gap: 3px;
+    gap: var(--ttal-label-gap);
     width: 100%;
 }
 
@@ -57,11 +90,24 @@
     display: none !important;
 }
 
-/* 标签统一贴紧自己的输入框 */
-#ttal_root .ttal-slot > h3,
-#ttal_root .ttal-slot > h4,
+/* 我们自己这块的行距全部交给 gap 管，标签一律清零 */
+#ttal_root h3,
+#ttal_root h4,
 #ttal_root .ttal-label {
     margin: 0;
+}
+
+/* 连接配置那一整块是原生的嵌套结构，gap 管不到它内部，单独给一档 */
+#ttal_root .ttal-slot-profile > .wide100p {
+    display: flex;
+    flex-direction: column;
+    gap: var(--ttal-label-gap);
+}
+
+/* 「详情」的内容容器空着的时候仍然占一个 gap（预设行下面多出 4px），收掉 */
+#ttal_root #connection_profile_details_content:empty,
+#ttal_root #connection_profile_details_content.hidden {
+    display: none;
 }
 
 /* 「当前API预设」原生是 h3（比别的标签大一号），这里降到和其他标签同一档，
@@ -137,7 +183,8 @@
     gap: 6px;
     cursor: pointer;
     user-select: none;
-    padding: 2px 0;
+    padding: 0;
+    margin-bottom: var(--ttal-label-gap);
 }
 
 #ttal_root .ttal-caret {
@@ -154,5 +201,4 @@
     flex-direction: column;
     gap: var(--ttal-row-gap);
     width: 100%;
-    padding-top: 4px;
 }
