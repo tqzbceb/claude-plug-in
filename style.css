@@ -1,7 +1,8 @@
 /*
- * API 面板重排 —— 只做布局与尺寸，不定义任何颜色 / 字体 / 圆角 / 阴影。
- * 视觉风格 100% 交给原生 class（text_pole / menu_button / inline-drawer ...），
- * 因此换主题、换美化插件都不会和本扩展打架。
+ * API 面板重排 —— 布局、尺寸、以及第 6 节的视觉层次。
+ * 一条颜色都不定义：色相 / 边框 / 圆角 / 阴影 100% 交给原生 class
+ * （text_pole / menu_button / inline-drawer ...），换主题、换美化插件都不打架。
+ * 第 6 节做层次也只用字号、字重、透明度、间距和 currentColor —— 都是跟着主题走的量。
  *
  * 尺寸体系（.ttal-panel = 整个 #rm_api_block，装配时加上、卸载时去掉）：
  *   --ttal-field-h  单行输入框 / 下拉框的统一高度（默认约 34px）
@@ -366,4 +367,275 @@
     flex-direction: column;
     gap: var(--ttal-row-gap);
     width: 100%;
+}
+
+/* ==========================================================================
+ * 6. 视觉层次（v4）
+ * ==========================================================================
+ * 前面 5 节把每一行都对齐、等高、等宽了 —— 结果是一叠一模一样的横条，
+ * 整齐但没有主次，眼睛不知道该先看哪儿。这一节只做一件事：分层。
+ * 手段限定在三样跟主题无关的量上 ——
+ *   字号 / 字重 / 透明度：标签退后一步，内容站前面；
+ *   间距：标签贴住自己的控件，块与块之间拉开并用一道发丝线断开；
+ *   宽度：一行是"整宽字段"还是"一小截按钮"，本身就是层级信号。
+ * 一条颜色都没改，所以任何主题下都不会突兀。
+ */
+
+/* ---- 6.1 三档间距 ----
+ * 4px 标签→控件、10px 控件→下一个标签、18px 块与块之间。 */
+
+.ttal-panel.ttal-managed {
+    --ttal-row-gap: 10px;
+    --ttal-block-gap: 18px;
+    /* 按钮从 2em 提到 2.15em：手机上 2em 的按钮点起来偏薄 */
+    --ttal-btn-h: calc(var(--mainFontSize, 15px) * 2.15);
+}
+
+.ttal-panel.ttal-managed.ttal-compact {
+    --ttal-row-gap: 8px;
+    --ttal-block-gap: 13px;
+}
+
+@media screen and (max-width: 1000px) {
+    .ttal-panel.ttal-managed.ttal-auto-compact {
+        --ttal-row-gap: 8px;
+        --ttal-block-gap: 13px;
+    }
+}
+
+/* 发丝线：把面板断成「这是哪个预设」/「连什么」/「动手」三块。
+   颜色取 currentColor 再压到 10%，跟着主题的文字色走，深浅主题都不出戏。 */
+#ttal_root .ttal-slot-endpoint::before,
+#ttal_root .ttal-slot-buttons::before {
+    content: '';
+    flex: 0 0 1px;
+    width: 100%;
+    background: currentColor;
+    opacity: 0.1;
+    /* 槽位是列向 flex，伪元素就是它的第一个 flex item；
+       上下气口要减去 flex gap 已经给的那一份 */
+    margin: calc(var(--ttal-block-gap) - var(--ttal-row-gap)) 0
+            calc(var(--ttal-block-gap) - var(--ttal-label-gap));
+}
+
+/* 空槽位不画线（比如某个来源没有端点字段） */
+#ttal_root .ttal-slot.ttal-hidden::before,
+#ttal_root .ttal-slot.ttal-empty::before {
+    content: none;
+}
+
+/* ---- 6.2 字号层级 ----
+ * 标签是注解，不是内容：小一号、半透明、字距略开。
+ * 一列标签这么退下去之后，输入框里的内容自然浮出来。 */
+
+.ttal-panel.ttal-managed h4,
+#ttal_root .ttal-label {
+    font-size: 0.8em;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    line-height: 1.25;
+    opacity: 0.6;
+}
+
+/* 「API」原生是 h3，其实也只是给下面那个下拉贴的标签，降到同一档 */
+.ttal-panel.ttal-managed #title_api {
+    font-size: 0.8em;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    line-height: 1.25;
+    opacity: 0.6;
+}
+
+/* 「当前API预设」是这块面板的标题，比字段标签重一档（第 2 节把它压平了，这里提回来） */
+#ttal_root .ttal-slot-profile h3 {
+    font-size: 0.95em;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    line-height: 1.25;
+    opacity: 0.9;
+}
+
+/* 端点 / 密钥 / 模型名是机器读的字符串，用等宽字体 —— 跟人读的「预设名称」
+   拉开对比，URL 里的斜杠和密钥尾巴也更容易数清。字体族取主题自己的变量。 */
+#ttal_root .ttal-slot-endpoint input,
+#ttal_root .ttal-slot-key input,
+#ttal_root .ttal-slot-modelName input,
+#ttal_root .ttal-slot-modelList select {
+    font-family: var(--monoFontFamily, ui-monospace, Menlo, Consolas, monospace);
+    font-size: 0.92em;
+}
+
+/* 预设名称是给人看的名字，留在正文字体里，比上面那几行稍大 */
+#ttal_root .ttal-slot-profileName input {
+    font-size: 0.98em;
+}
+
+/* 按钮里补的文字标签：元素本身挂着 Font Awesome 的字体族，掰回正文字体 */
+#ttal_root .ttal-btn-text {
+    font-family: var(--mainFontFamily, inherit);
+    font-style: normal;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+}
+
+/* ---- 6.3 预设区：下拉框独占整宽，新建 / 删除退到下一行 ----
+ * 之前下拉右边贴着两颗方按钮，右边缘比底下的输入框短一截 —— 一眼就是参差。
+ * 现在下拉撑满整宽（右边缘和所有字段齐平），两个动作变成下面一行安静的小按钮：
+ * 它们不常点，本来也不该跟主字段抢地方。 */
+
+#ttal_root .ttal-slot-profile .flex-container {
+    flex-wrap: wrap;
+    gap: 6px 8px;
+}
+
+#ttal_root .ttal-slot-profile .flex-container > #connection_profiles {
+    flex: 1 1 100%;
+    width: 100%;
+}
+
+/* 两颗小按钮：带文字、矮一档、去掉底色，只留字和图标 */
+#ttal_root .ttal-slot-profile .flex-container > #ttal_new_profile,
+#ttal_root .ttal-slot-profile .flex-container > #delete_connection_profile {
+    flex: 0 0 auto;
+    width: auto;
+    min-width: 0;
+    aspect-ratio: auto;
+    height: var(--ttal-btn-h);
+    min-height: var(--ttal-btn-h);
+    padding: 0 0.75em;
+    font-size: 0.85em;
+    background: transparent;
+    box-shadow: none;
+    opacity: 0.62;
+}
+
+#ttal_root .ttal-slot-profile .flex-container > #ttal_new_profile:hover,
+#ttal_root .ttal-slot-profile .flex-container > #delete_connection_profile:hover {
+    opacity: 1;
+}
+
+/* 图标（class 的 ::before）和文字之间留口气 */
+#ttal_root .ttal-slot-profile .flex-container > #ttal_new_profile::before,
+#ttal_root .ttal-slot-profile .flex-container > #delete_connection_profile::before {
+    margin-right: 0.4em;
+}
+
+/* 「删除」推到行尾，跟「新建」分开 —— 免得手指点错 */
+#ttal_root .ttal-slot-profile .flex-container > #delete_connection_profile {
+    margin-left: auto;
+}
+
+/* ---- 6.4 小眼睛搬进密钥框里 ----
+ * 它原来站在框外面占一格，害得整个密钥行比别人短一截。放进框里，
+ * 右边缘就跟端点、模型名、下拉框全部齐平了 —— 这是"右边不留空"的关键一步。 */
+
+#ttal_root .ttal-slot-key .flex-container {
+    position: relative;
+}
+
+#ttal_root .ttal-slot-key input {
+    width: 100%;
+    padding-right: calc(var(--ttal-field-h) * 0.9);
+}
+
+#ttal_root .ttal-eye {
+    position: absolute;
+    right: 3px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: calc(var(--ttal-field-h) - 8px);
+    min-width: 0;
+    height: calc(var(--ttal-field-h) - 8px);
+    min-height: 0;
+    padding: 0;
+    background: transparent;
+    box-shadow: none;
+    border: none;
+    opacity: 0.5;
+    z-index: 2;
+}
+
+#ttal_root .ttal-eye:hover {
+    opacity: 1;
+}
+
+/* 原生小钥匙没隐藏时它站在框右边，框的右边缘就不是行的右边缘了 —— 眼睛跟着往左挪一格 */
+#ttal_root .ttal-slot-key.ttal-key-btn .ttal-eye {
+    right: calc(var(--ttal-field-h) + 8px);
+}
+
+/* ---- 6.5 动作行：一排等宽方块 → 主次分明 ----
+ * 「加载模型」是这块面板九成的点击量，让它占满剩下的地方；
+ * 「保存预设」按内容宽；「附加参数」偶尔才点，安静下来。 */
+
+/* 按钮行上下的气口现在由发丝线的外边距给，原来那一档要清掉，不然叠一起 */
+.ttal-panel.ttal-managed #ttal_root .ttal-slot-buttons {
+    margin: 0;
+}
+
+#ttal_root .ttal-slot-buttons > .flex-container {
+    gap: 8px;
+}
+
+/* 吃掉这一行剩下的宽度 —— 但 basis 用 auto：写死 40% 的话手机上三颗按钮
+   加起来超一点点就整行换行，一行变两行 */
+#ttal_root .ttal-slot-buttons #api_button_openai {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-weight: 700;
+}
+
+#ttal_root .ttal-slot-buttons #ttal_save_profile {
+    flex: 0 0 auto;
+    font-weight: 600;
+}
+
+#ttal_root .ttal-slot-buttons #customize_additional_parameters,
+#ttal_root .ttal-slot-buttons .api_loading {
+    flex: 0 0 auto;
+    background: transparent;
+    box-shadow: none;
+    font-size: 0.9em;
+    opacity: 0.6;
+}
+
+#ttal_root .ttal-slot-buttons #customize_additional_parameters:hover,
+#ttal_root .ttal-slot-buttons .api_loading:hover {
+    opacity: 1;
+}
+
+/* 按钮里图标和文字之间也留口气 */
+#ttal_root .ttal-slot-buttons .menu_button > i,
+#ttal_root .ttal-slot-buttons .menu_button > .fa-solid {
+    margin-right: 0.4em;
+}
+
+/* ---- 6.6 面板尾巴上的原生零碎跟着退后一档 ----
+ * 连接状态、勾选框、"查看密钥"这些都是次要信息，不该跟字段抢注意力。 */
+
+.ttal-panel.ttal-managed .online_status {
+    font-size: 0.85em;
+    opacity: 0.75;
+}
+
+.ttal-panel.ttal-managed label.checkbox_label {
+    font-size: 0.9em;
+    opacity: 0.8;
+}
+
+.ttal-panel.ttal-managed #viewSecrets {
+    font-size: 0.85em;
+    opacity: 0.7;
+}
+
+/* 标签后面那个问号链接原生是高亮色的，比标签本身还抢眼。压下去一档，
+   它是"要看帮助的时候才找"的东西。 */
+.ttal-panel.ttal-managed .notes-link,
+.ttal-panel.ttal-managed .note-link-span {
+    opacity: 0.45;
+}
+
+.ttal-panel.ttal-managed .notes-link:hover,
+.ttal-panel.ttal-managed .notes-link:hover .note-link-span {
+    opacity: 1;
 }

@@ -43,7 +43,7 @@ const DEFAULT_SETTINGS = {
     adoptExtras: true,       // 各家自己的额外字段也收进面板（Azure 部署名、Vertex 区域…）
     autoCompact: true,       // 窄屏（≤1000px，手机）自动收紧行距
     forceCompact: false,     // 任何屏幕都用紧凑行距
-    alignFields: true,       // 字段右边缘对齐：没有尾随按钮的那几行也留出一个按钮位
+    alignFields: false,      // 旧方案：给没有尾随按钮的行留一个按钮位。v4 起改成图标进框，默认关
     guardKeyHint: true,      // 不让客户端把已存的密钥写进密钥框的提示文字（placeholder 不受遮罩影响）
     debug: false,
 };
@@ -104,6 +104,8 @@ const LABELS = {
     showKey: ['显示密钥明文', 'Show key'],
     hideKey: ['隐藏密钥', 'Hide key'],
     newProfile: ['新建一个空白预设', 'Start a blank preset'],
+    newProfileText: ['新建', 'New'],
+    deleteProfileText: ['删除', 'Delete'],
     saveProfileHint: [
         '保存预设：没选预设或改了「预设名称」就新建一个，否则覆盖当前选中的',
         'Save: creates a new preset when none is selected or the name changed, otherwise overwrites the selected one',
@@ -270,6 +272,30 @@ function patchText(el, text) {
     if (el.textContent === text && !el.hasAttribute('data-i18n')) return;
     el.removeAttribute('data-i18n'); // 防止 i18n 重新翻译时覆盖新标签
     el.textContent = text;
+}
+
+/** 按钮里的文字标签：单独包一层，好让 CSS 把字体从 Font Awesome 掰回正文字体 */
+function labelSpan(text) {
+    const span = document.createElement('span');
+    span.className = 'ttal-btn-text';
+    span.textContent = text;
+    return span;
+}
+
+/**
+ * 给一颗只有图标的原生按钮补上文字。
+ * 图标是元素自己 class 上的 ::before 画的，所以不能直接写 textContent：
+ * 元素挂着 FA 字体族（<i> 还带斜体），中文会落到回退字体上，字重字形都不对。
+ * 走 patch 台账记账 —— 卸载时 innerHTML 原样还回去。
+ * data-i18n 这里不摘：这几颗按钮的 i18n 只管 title，翻译回来也不会覆盖文字。
+ */
+function patchLabel(el, text) {
+    if (!el || !text) return;
+    const record = patchRecord(el);
+    if (record.html === undefined) record.html = el.innerHTML;
+    if (el.firstElementChild?.classList?.contains('ttal-btn-text')
+        && el.textContent === text) return;
+    el.replaceChildren(labelSpan(text));
 }
 
 function patchAttr(el, name, value) {
@@ -541,7 +567,15 @@ function sweepSlots() {
         for (const child of Array.from(slot.children).slice(keep)) {
             if (!passUsed?.has(child)) restoreNode(child);
         }
-        slot.classList.toggle('ttal-empty', slot.children.length === 0);
+        // 一个孩子都没有，或者剩下的全被隐藏了（比如某来源的「其它」字段全是提示，
+        // 被 hideHints 收掉）—— 都要算空。列向 flex 里一个 0 高的槽位照样吃掉一档
+        // gap，上下就差出 10px，发丝线看起来也不在正中间。
+        // 用 computed display 而不是 offsetHeight：抽屉收起时整块面板是 display:none，
+        // 量高度会把每个槽位都判成空。computed display 不受祖先影响，安全。
+        const alive = Array.from(slot.children).some((el) => el.tagName !== 'STYLE'
+            && !el.classList.contains('ttal-hidden')
+            && getComputedStyle(el).display !== 'none');
+        slot.classList.toggle('ttal-empty', !alive);
     }
 }
 
@@ -740,6 +774,9 @@ function layoutProfile(slot) {
             }
             hideNode(create);
         }
+        // 「删除」也补上文字：一行里两颗只有图标的方块认不出是什么，
+        // 图标是 class 的 ::before 画的，加文字不会把它挤掉
+        if (cfg().customLabels) patchLabel(native('#delete_connection_profile'), t('deleteProfileText'));
     }
 }
 
@@ -822,8 +859,10 @@ function newProfileButton() {
     if (ui.newBtn) return ui.newBtn;
     const btn = markSynthetic(document.createElement('div'));
     btn.id = 'ttal_new_profile';
-    btn.className = 'menu_button fa-solid fa-file-circle-plus fa-fw ttal-new-profile';
+    // 不要 fa-fw：它会把按钮宽度锁成 1.25em，这颗按钮是图标 + 文字
+    btn.className = 'menu_button fa-solid fa-file-circle-plus ttal-new-profile';
     btn.title = t('newProfile');
+    btn.append(labelSpan(t('newProfileText')));
     btn.addEventListener('click', () => blankProfile());
     ui.newBtn = btn;
     return btn;
@@ -1105,6 +1144,10 @@ function layoutKey(slot, fields) {
     if (cfg().hideHints) {
         for (const btn of slot.querySelectorAll('.manage-api-keys')) hideNode(btn);
     }
+    // 小眼睛是绝对定位贴在密钥框右端的。原生小钥匙没被隐藏时它站在框外面，
+    // 框的右边缘就不是行的右边缘了 —— 打个标记，让 CSS 把眼睛也往左挪一格。
+    const keyBtn = slot.querySelector('.manage-api-keys');
+    slot.classList.toggle('ttal-key-btn', !!keyBtn && !keyBtn.classList.contains('ttal-hidden'));
     mountKeyEye(input);
 }
 
@@ -1478,7 +1521,7 @@ const SETTING_ITEMS = [
     ['adoptExtras', '各家额外字段也收进面板', 'Adopt per-source extra fields'],
     ['autoCompact', '窄屏（手机）自动收紧行距', 'Tighten spacing on narrow screens'],
     ['forceCompact', '任何屏幕都用紧凑行距', 'Always use compact spacing'],
-    ['alignFields', '字段右边缘对齐（比原来窄一个按钮位）', 'Align field right edges (one button column narrower)'],
+    ['alignFields', '旧版：右边留一个按钮位（v4 已改为图标进框，默认关）', 'Legacy: reserve a button column on the right'],
     ['guardKeyHint', '不让密钥出现在密钥框的提示文字里', 'Keep the stored key out of the key field placeholder'],
     ['debug', '调试日志', 'Debug logging'],
 ];
