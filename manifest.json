@@ -1,7 +1,7 @@
 {
     "display_name": "API 面板重排 (API Panel Layout)",
     "name": "api-panel-layout",
-    "version": "2.3.0",
+    "version": "2.4.0",
     "author": "generated for TauriTavern",
     "description": "把 API 连接配置面板压到最小：顶部只留「当前API预设」（原生连接配置下拉框+按钮），端点/密钥/模型名/模型列表收进默认折叠的「新建 / 编辑 API」区；清掉新手提示与管理密钥按钮。只搬移原生节点，可完全还原。",
     "loading_order": 1000,

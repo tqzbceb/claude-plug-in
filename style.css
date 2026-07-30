@@ -1,16 +1,50 @@
 /*
- * API 面板重排 —— 只做布局，不定义任何颜色 / 字体 / 圆角 / 阴影。
+ * API 面板重排 —— 只做布局与尺寸，不定义任何颜色 / 字体 / 圆角 / 阴影。
  * 视觉风格 100% 交给原生 class（text_pole / menu_button / inline-drawer ...），
  * 因此换主题、换美化插件都不会和本扩展打架。
+ *
+ * 尺寸体系（.ttal-panel = 整个 #rm_api_block，装配时加上、卸载时去掉）：
+ *   --ttal-field-h  单行输入框 / 下拉框的统一高度（默认约 34px）
+ *   --ttal-btn-h    按钮行的高度，比输入框矮一档（默认约 28px）
+ * 都按主题字号算，所以调字号会整体跟着缩放；写死 height 而不是加 padding，
+ * 是因为客户端给个别输入框单独设了 font-size，用 em 会一格高一格矮。
  */
 
+.ttal-panel {
+    --ttal-field-h: calc(var(--mainFontSize, 15px) * 2.25);
+    --ttal-btn-h: calc(var(--mainFontSize, 15px) * 1.85);
+    --ttal-row-gap: 9px;
+}
+
+/* ---- 1. 面板里所有单行输入框 / 下拉框：等高、等宽 ---- */
+
+.ttal-panel input.text_pole,
+.ttal-panel select.text_pole,
+.ttal-panel select#main_api,
+.ttal-panel select#chat_completion_source,
+.ttal-panel #prompt_post_processing_form select {
+    height: var(--ttal-field-h);
+    min-height: var(--ttal-field-h);
+    padding-top: 0;
+    padding-bottom: 0;
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
+}
+
+/* ---- 2. 重排出来的主体 ---- */
+
 #ttal_root {
-    gap: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: var(--ttal-row-gap);
     width: 100%;
 }
 
 #ttal_root .ttal-slot {
-    gap: 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
     width: 100%;
 }
 
@@ -23,11 +57,77 @@
     display: none !important;
 }
 
+/* 标签统一贴紧自己的输入框 */
+#ttal_root .ttal-slot > h3,
+#ttal_root .ttal-slot > h4,
 #ttal_root .ttal-label {
     margin: 0;
 }
 
-/* ---- 折叠区「新建 / 编辑 API」---- */
+/* 「当前API预设」原生是 h3（比别的标签大一号），这里降到和其他标签同一档，
+   让一列标签看上去是同一个层级 */
+#ttal_root .ttal-slot-profile h3 {
+    font-size: var(--mainFontSize, 15px);
+    line-height: 1.3;
+}
+
+/* 标题行（标题 + 那个问号链接）也垂直居中 */
+#ttal_root .ttal-slot-profile > .flex-container:first-child {
+    gap: 4px;
+}
+
+/* 行内容器：垂直居中、间距一致；行距交给 #ttal_root 的 gap 管 */
+#ttal_root .ttal-slot .flex-container {
+    align-items: center;
+    gap: 5px;
+    margin: 0;
+}
+
+#ttal_root .ttal-slot input.text_pole,
+#ttal_root .ttal-slot select.text_pole {
+    margin: 0;
+}
+
+/* ---- 3. 图标按钮：正方形，和同行的输入框等高 ---- */
+
+#ttal_root .ttal-eye,
+#ttal_root .ttal-slot-profile .flex-container > .menu_button {
+    flex: 0 0 auto;
+    align-self: center;
+    width: var(--ttal-field-h);
+    min-width: var(--ttal-field-h);
+    height: var(--ttal-field-h);
+    min-height: var(--ttal-field-h);
+    padding: 0;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    line-height: 1;
+    aspect-ratio: 1 / 1;
+}
+
+/* ---- 4. 按钮行：比输入框矮一档，但点击面积够大 ---- */
+
+#ttal_root .ttal-slot-buttons > .flex-container {
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+#ttal_root .ttal-slot-buttons .menu_button {
+    height: var(--ttal-btn-h);
+    min-height: var(--ttal-btn-h);
+    padding: 0 0.9em;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    line-height: 1;
+}
+
+/* ---- 5. 折叠区「新建 / 编辑 API」（默认关闭，设置里可开）---- */
 
 #ttal_root .ttal-editor {
     width: 100%;
@@ -50,92 +150,9 @@
 }
 
 #ttal_root .ttal-editor-body {
-    gap: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: var(--ttal-row-gap);
     width: 100%;
     padding-top: 4px;
-}
-
-/* 折叠区里的原生输入框铺满宽度 */
-#ttal_root .ttal-editor-body .text_pole {
-    max-width: 100%;
-}
-
-/* ---- 密钥框右边的小眼睛：高度跟输入框对齐，方形 ---- */
-
-#ttal_root .ttal-slot-key > .flex-container {
-    align-items: stretch;
-    gap: 5px;
-}
-
-#ttal_root .ttal-eye {
-    flex: 0 0 auto;
-    align-self: stretch;      /* 上下 margin 由 JS 抄输入框，所以拉伸后正好等高 */
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    box-sizing: border-box;
-    height: auto;
-    min-width: 2.05em;        /* 和原生那颗「管理密钥」小钥匙一样宽 */
-    padding: 0 4px;
-    line-height: 1;
-}
-
-/* ---- 预设名称输入框 ---- */
-
-#ttal_root .ttal-profile-name {
-    width: 100%;
-    max-width: 100%;
-}
-
-/* ---- 「保存预设」按钮（原生 #update_connection_profile 挪过来的） ---- */
-
-#ttal_root .ttal-save-profile {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-}
-
-/* ---------------------------------------------------------------
- * 手机友好：面板内的输入框统一加高一档，按钮跟着变大；
- * 按钮仍比输入框矮一点，但不再是扁条。
- * 高度用 --mainFontSize 算，跟着主题字号缩放；写成固定高度是因为客户端
- * 给某些输入框单独调了 font-size，用 em 会一格 33 一格 31 不齐。
- * 只在 #ttal_root 内生效，不动客户端别处的样式。
- * --------------------------------------------------------------- */
-
-#ttal_root {
-    --ttal-field-h: calc(var(--mainFontSize, 15px) * 2.25);
-    --ttal-btn-h: calc(var(--mainFontSize, 15px) * 1.85);
-}
-
-#ttal_root input.text_pole,
-#ttal_root select.text_pole {
-    height: var(--ttal-field-h);
-    min-height: var(--ttal-field-h);
-    padding-top: 0;
-    padding-bottom: 0;
-    box-sizing: border-box;
-}
-
-/* 按钮行：比输入框矮一点，但有正常的点击面积 */
-#ttal_root .ttal-slot-buttons .menu_button {
-    height: var(--ttal-btn-h);
-    min-height: var(--ttal-btn-h);
-    padding: 0 0.8em;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    box-sizing: border-box;
-}
-
-/* 预设那排的图标按钮（新建 / 删除）与下拉框等高，手机上好按 */
-#ttal_root .ttal-slot-profile .flex-container > .menu_button {
-    align-self: stretch;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    height: auto;
-    min-width: 2.6em;
-    padding: 0 0.4em;
-    box-sizing: border-box;
 }

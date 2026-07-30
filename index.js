@@ -478,6 +478,18 @@ function panelHost() {
     return document.querySelector('#openai_api') || document.querySelector('#rm_api_block');
 }
 
+/**
+ * 给整个 API 抽屉打上 .ttal-panel，让统一的尺寸规则也覆盖到面板里
+ * 不归我们管的原生控件（API / Chat Completion Source / Prompt Post-Processing）。
+ * 这里故意用 classList 而不是 patchAttr：#rm_api_block 的 class 会被客户端
+ * 反复改（closedDrawer / openDrawer），记录旧值再还原会把抽屉状态弄坏。
+ */
+function markPanel(on) {
+    const panel = document.querySelector('#rm_api_block');
+    if (!panel) return;
+    panel.classList.toggle('ttal-panel', !!on);
+}
+
 /** 根节点插到「Chat Completion Source」下拉框之后 */
 function ensureMounted(root) {
     const host = panelHost();
@@ -640,16 +652,6 @@ function keyEye() {
     return eye;
 }
 
-/**
- * 让眼睛和密钥框严格等高：抄输入框的上下 margin，再让自己在行内拉伸。
- * 这样不管主题把 .text_pole 调多高，眼睛都跟着走，不会一块高一块矮。
- */
-function alignEyeToInput(input, eye) {
-    const cs = getComputedStyle(input);
-    if (eye.style.marginTop !== cs.marginTop) eye.style.marginTop = cs.marginTop;
-    if (eye.style.marginBottom !== cs.marginBottom) eye.style.marginBottom = cs.marginBottom;
-}
-
 /** 把小眼睛放到密钥输入框右边（同一行内，不占独立一行） */
 function mountKeyEye(input) {
     if (!cfg().keyReveal) {
@@ -663,7 +665,6 @@ function mountKeyEye(input) {
     ui.eyeInput = input;
     if (input.nextElementSibling !== eye) input.after(eye);
     passUsed?.add(eye); // 万一它成了槽位的直接子节点，别被 sweepSlots 当残留清掉
-    alignEyeToInput(input, eye);
     if (switched) {
         // 换了 source：新框一律先遮上，图标复位
         maskKey(input);
@@ -818,6 +819,7 @@ function apply() {
     try {
         const root = buildRoot();
         if (!ensureMounted(root)) return;
+        markPanel(true);
 
         const fields = fieldsFor(currentSource());
         passUsed = new Set();
@@ -851,6 +853,7 @@ function teardown() {
         clearTimeout(modelWatch?.timer);
         modelWatch = null;
 
+        markPanel(false);
         ui.eye?.remove();
         ui.eyeInput = null;
         ui.eyeRevealed = false;
