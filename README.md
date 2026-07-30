@@ -94,4 +94,9 @@ apiPanelLayout.cfg()       // 当前设置
 - `teardown()` 后 `#rm_api_block` 与加载前**逐字符一致**
 - 重复 `apply()` 不堆积节点（44 → 44）
 
+在真实 markup + 真实 CSS 的预览页上另外验证通过（v2.0.1）：
+
+- 连续多次 `apply()` 后布局稳定，不会出现空标签（修掉了 `closest('.wide100p')` 命中输入框自身的 bug）
+- 多次 `apply()` 再 `teardown()`，`#rm_api_block` 仍与加载前逐字符一致
+
 未在真机 TauriTavern 上跑过。

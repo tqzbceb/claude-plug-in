@@ -280,7 +280,14 @@ function groupOf(ctrl) {
         // 提升到 source 容器的直接子节点，保证 <h4> 与输入框是兄弟关系
         while (body.parentElement && body.parentElement !== host) body = body.parentElement;
     } else {
-        body = ctrl.closest('.flex-container, .wide100p, .range-block') || ctrl.parentElement;
+        // 注意：绝不能用 ctrl.closest(...)，因为输入框自己就常带 wide100p，
+        // 会匹配到自身，导致第二次装配时把外层容器和标签丢回原处（曾经的 bug）。
+        // 从父节点开始找，且跳过我们自己的合成槽位。
+        const parent = ctrl.parentElement;
+        const wrapper = parent && !isSynthetic(parent)
+            ? parent.closest('.flex-container, .wide100p, .range-block')
+            : null;
+        body = wrapper && !isSynthetic(wrapper) ? wrapper : ctrl;
     }
     if (!body || body === document.body) return null;
 
