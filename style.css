@@ -43,7 +43,34 @@
 }
 
 .ttal-panel .online_status {
+    margin: var(--ttal-row-gap) 0 0;
+    padding-left: 0;
+}
+
+/* 状态行的圆点、勾选框都跟输入框的左边缘对齐（原生勾选框往里缩了 4px） */
+.ttal-panel label.checkbox_label {
+    margin-left: 0;
+    padding-left: 0;
+}
+
+.ttal-panel label.checkbox_label > input[type="checkbox"] {
+    margin-left: 0;
+}
+
+.ttal-panel .checkbox_label {
     margin-top: var(--ttal-row-gap);
+}
+
+/* ---- 下拉框右边给个小箭头，提示这里能点开 ---- */
+
+.ttal-panel select.text_pole,
+.ttal-panel select#main_api,
+.ttal-panel select#chat_completion_source {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.6 6 6.4 11 1.6' fill='none' stroke='%239aa0a6' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 9px center;
+    background-size: 11px 7px;
+    padding-right: 26px;
 }
 
 /* ---- 1. 面板里所有单行输入框 / 下拉框：等高、等宽 ---- */
@@ -155,6 +182,11 @@
 }
 
 /* ---- 4. 按钮行：比输入框矮一档，但点击面积够大 ---- */
+
+/* 按钮行上下多留一点气口：它没有标签，跟上下两组贴太近会显得挤 */
+#ttal_root .ttal-slot-buttons {
+    margin: 4px 0;
+}
 
 #ttal_root .ttal-slot-buttons > .flex-container {
     flex-wrap: wrap;
